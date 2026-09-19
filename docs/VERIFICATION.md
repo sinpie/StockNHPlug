@@ -12,15 +12,23 @@ Windows, Android Studio JBR, Gradle 8.13, AGP 8.12.2, Kotlin 1.9.0, Android SDK 
 |---|---|---|
 | Debug APK | 빌드 성공 | `app/build/outputs/apk/debug/app-debug.apk` |
 | Release AAB | 빌드 성공, 업로드 서명 미설정 | `app/build/outputs/bundle/release/app-release.aab` |
-| JVM unit tests | 32개 통과, 실패/오류 0 | `app/build/reports/tests/testDebugUnitTest/index.html` |
+| JVM unit tests | 52개 통과, 실패/오류 0 | `app/build/reports/tests/testDebugUnitTest/index.html` |
 | Android Lint | 오류 0, 라이브러리/Gradle 최신 버전 알림 경고 존재 | `app/build/reports/lint-results-debug.html` |
 | 출처/로그 정적 검사 | 통과 | `python scripts/audit_sources.py` |
-| Android instrumentation | 7개 통과, 실패 0 | Android 11 / API 30 x86_64: Keystore 2개, UI 탭 이동 1개, LocalStore 4개 |
+| Android instrumentation | 9개 통과, 실패 0 | Android 11 / API 30 x86_64: Keystore 2개, UI 2개, LocalStore/설정 저장 5개 |
 | 실제 NHPlug 모의 계좌 | 미실행 | 사용자 기기 키·모의계좌 필요 |
 | 실제 자금 주문 | 미실행, 잠금 | 기본 구성은 모의 계좌만 제공 |
 | Play 심사 | 미제출 | RELEASE.md의 게이트 미완료 |
 
 ## JVM 테스트 범위
+
+### 전략 그룹 확장 최종 검증 (2026-09-19)
+
+`testDebugUnitTest lintDebug assembleDebug bundleRelease connectedDebugAndroidTest` 최종 실행 성공. JVM 52개, API 30 Android 9개 통과, 린트 오류 0/기존 버전 경고 12개입니다. 추가 검증은 동일 종목 그룹별 원가·수량·손익 격리, 누적 부분체결 중복 방지, 후퇴/알 수 없는 체결/초과 매도 거절, 정기매수 회차·서울 시각·월말/주말 처리, 5개 프리셋과 설정 직렬화, 일정 상속/끄기, 물타기/리밸런싱 계산, 다른 그룹 동일 종목 주문, 그룹 보유량 매도 상한, 대사 제공자 미연결 잠금, 정기매수의 데이터 게이트 유지입니다.
+
+Android에서는 그룹 설정의 암호화 복원, 전략 관리/지표 조합/정기매수 화면 이동을 추가 확인했습니다. 초기에 API 31 전용 BigInteger 변환으로 린트가 실패해 범위 검증 후 호환 변환으로 수정했습니다. UI 테스트의 중첩 가로/세로 스크롤 대상 오류를 진단해 실제 세로 부모를 먼저 스크롤하도록 수정했고 앱의 전략/탭 전환 시 상단 이동도 추가했습니다. 실패를 통과로 표시하지 않고 수정 후 전체 테스트를 재실행했습니다.
+
+그룹 주문번호-체결번호 대사, 실제 모의계좌 동시 그룹 매매, 장기 일정 실행은 미검증입니다. NHPlug GroupExecutionSource 미구현으로 실제 그룹 자동주문은 잠겨 있습니다. 테스트에서는 명시적인 합성 자료와 가짜 Broker만 사용하며 이 결과가 실제 체결 검증을 대체하지 않습니다.
 
 - 결과 저널 저장 실패 후에도 정지, 실행 중 세션 손실 기준 재설정 거절.
 - 15초/60초를 초과하는 1나노초 경계 및 미래 잔고 차단.

@@ -27,6 +27,9 @@ class LocalStore(private val vault: SecureVault) : OrderJournal {
                             j.getString("reason"),
                             Instant.parse(j.getString("at")),
                             j.optString("broker", "nhplug"),
+                            j.optString("strategy", ""),
+                            j.optString("group", ""),
+                            j.optString("occurrence", ""),
                         ),
                         OrderStatus.valueOf(j.getString("status")),
                         j.optString("number"),
@@ -108,6 +111,9 @@ class LocalStore(private val vault: SecureVault) : OrderJournal {
                             JSONObject()
                                 .put("id", i.id)
                                 .put("broker", i.brokerId)
+                                .put("strategy", i.strategyId)
+                                .put("group", i.groupId)
+                                .put("occurrence", i.occurrence)
                                 .put("env", i.environment.name)
                                 .put("account", i.account)
                                 .put("symbol", i.symbol)

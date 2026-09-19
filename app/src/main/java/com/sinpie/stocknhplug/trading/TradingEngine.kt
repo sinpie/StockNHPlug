@@ -63,6 +63,7 @@ class TradingEngine(
         side: Side,
         reason: String,
         settings: Strategy,
+        allocation: GroupAllocation? = null,
     ): OrderRecord =
         mutex.withLock {
             settings.validate()
@@ -110,14 +111,20 @@ class TradingEngine(
             }
             val today =
                 records.filter { it.intent.at.atZone(SEOUL).toLocalDate() == local.toLocalDate() }
-            check(today.none { it.intent.symbol == quote.symbol && it.intent.side == side }) {
+            check(
+                today.none {
+                    it.intent.symbol == quote.symbol &&
+                        it.intent.side == side &&
+                        it.intent.groupId == (allocation?.groupId ?: "")
+                }
+            ) {
                 "동일 종목·방향은 하루 한 번만 주문합니다."
             }
             val holding = portfolio.holdings.find { it.symbol == quote.symbol }
             val price = if (side == Side.BUY) quote.ask else quote.bid
             val requested =
                 if (side == Side.BUY) {
-                    check(holding == null) { "이미 보유한 종목입니다." }
+                    check(allocation != null || holding == null) { "이미 보유한 종목입니다." }
                     val pendingBuys =
                         today.filter {
                             it.intent.side == Side.BUY && it.status != OrderStatus.REJECTED
@@ -126,7 +133,7 @@ class TradingEngine(
                         (portfolio.holdings.map { it.symbol } +
                                 pendingBuys.map { it.intent.symbol })
                             .distinct()
-                            .size < settings.maxPositions
+                            .size < settings.maxPositions || (allocation != null && holding != null)
                     ) {
                         "보유 종목 한도입니다."
                     }
@@ -138,13 +145,26 @@ class TradingEngine(
                         min(settings.orderBudget, min(settings.dailyBudget - spent, portfolio.cash))
                     // ATR sizing belongs to application policy; this final gate includes a 1% cash
                     // buffer.
-                    (budget.coerceAtLeast(0) / (price * 1.01)).toLong()
+                    (min(budget, allocation?.cash ?: Long.MAX_VALUE).coerceAtLeast(0) /
+                            (price * 1.01))
+                        .toLong()
                 } else {
                     check(settings.manageHoldings) { "보유종목 자동관리에 동의하세요." }
-                    holding?.quantity ?: 0L
+                    min(
+                        min(holding?.quantity ?: 0L, allocation?.owned ?: Long.MAX_VALUE),
+                        settings.orderBudget / price,
+                    )
                 }
             val available = broker.available(account, quote.symbol, side, price)
-            val qty = min(requested, available)
+            if (allocation != null)
+                require(
+                    allocation.groupId.isNotBlank() &&
+                        allocation.strategyId.isNotBlank() &&
+                        allocation.quantity > 0 &&
+                        allocation.owned >= 0 &&
+                        allocation.cash >= 0
+                )
+            val qty = min(min(requested, available), allocation?.quantity ?: Long.MAX_VALUE)
             check(qty > 0) { "주문 가능한 수량이 없습니다." }
             check(running && quote.fresh(now())) { "정지 요청 또는 시세 지연으로 주문을 막았습니다." }
             val intent =
@@ -159,6 +179,9 @@ class TradingEngine(
                     reason,
                     now(),
                     broker.id,
+                    allocation?.strategyId ?: "",
+                    allocation?.groupId ?: "",
+                    allocation?.occurrence ?: "",
                 )
             check(journal.reserve(intent)) { "주문 기록 저장 실패" }
             try {

@@ -28,7 +28,7 @@ class UiInstrumentedTest {
                 .compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
         }
         compose.onNodeWithText("전략", useUnmergedTree = true).performClick()
-        compose.onNodeWithText("나만의 매매 규칙").assertIsDisplayed()
+        compose.onNodeWithText("전략과 그룹").assertIsDisplayed()
         compose.onNodeWithText("리서치", useUnmergedTree = true).performClick()
         compose.onNodeWithText("매수 전, 근거부터").assertIsDisplayed()
         compose.onNodeWithText("관심종목 분석").assertIsNotEnabled()

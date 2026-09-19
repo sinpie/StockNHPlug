@@ -1,0 +1,240 @@
+package com.sinpie.stocknhplug
+
+import com.sinpie.stocknhplug.application.*
+import com.sinpie.stocknhplug.domain.*
+import com.sinpie.stocknhplug.research.*
+import com.sinpie.stocknhplug.trading.TradingEngine
+import java.math.BigDecimal
+import java.time.*
+import kotlinx.coroutines.runBlocking
+import org.junit.Assert.*
+import org.junit.Test
+
+/** 합성 자료와 가짜 증권 포트만 사용하는 응용 계약 테스트. 실제 주문·인증 요청 없음. */
+class GroupCoordinatorTest {
+    private val now = Instant.parse("2026-09-21T01:00:00Z")
+    private val account = Account("test", Environment.MOCK, "test-broker")
+    private val portfolio = Portfolio(1_000_000, 1_000_000, 0, emptyList(), now)
+    private val quote = Quote("005930", 10000, 10000, 10010, now, now, true)
+
+    private class MemoryStore : ApplicationStorage {
+        var book =
+            StrategyBook(
+                StrategyBook.defaults().plans.map {
+                    it.copy(
+                        enabled = true,
+                        schedule = PurchaseSchedule(true, ScheduleFrequency.WEEKDAYS),
+                    )
+                },
+                listOf(
+                    StrategyGroup(
+                        id = "g1",
+                        strategyId = "averaging",
+                        name = "test",
+                        enabled = true,
+                        symbols = listOf(GroupSymbol("005930")),
+                    )
+                ),
+            )
+        val orders = mutableListOf<OrderRecord>()
+        var fills = emptyList<GroupFillReport>()
+
+        override fun strategyBook() = book
+
+        override fun saveStrategyBook(book: StrategyBook) {
+            this.book = book
+        }
+
+        override fun groupFills() = fills
+
+        override fun saveGroupFills(reports: List<GroupFillReport>) {
+            fills = reports
+        }
+
+        override fun settings() = Strategy()
+
+        override fun saveSettings(settings: Strategy) {}
+
+        override fun events() = emptyList<Event>()
+
+        override fun log(level: String, message: String) {}
+
+        override fun snapshots() = emptyList<HoldingSnapshot>()
+
+        override fun snapshot(account: Account, environment: Environment, portfolio: Portfolio) {}
+
+        override fun hasCredentials() = false
+
+        override fun saveCredentials(key: String, secret: String, dart: String) = error("not used")
+
+        override fun clear() = error("not used")
+
+        override fun reserve(intent: OrderIntent): Boolean {
+            orders += OrderRecord(intent, OrderStatus.SUBMITTING)
+            return true
+        }
+
+        override fun update(id: String, status: OrderStatus, brokerNumber: String) {
+            val n = orders.indexOfFirst { it.intent.id == id }
+            orders[n] = orders[n].copy(status = status, brokerNumber = brokerNumber)
+        }
+
+        override fun records() = orders.toList()
+    }
+
+    private class FakeBroker : Broker {
+        override val id = "test-broker"
+        override val environment = Environment.MOCK
+        var sent = 0
+
+        override suspend fun accounts() = emptyList<Account>()
+
+        override suspend fun portfolio(account: Account): Portfolio = error("not used")
+
+        override suspend fun available(account: Account, symbol: String, side: Side, price: Long) =
+            100L
+
+        override suspend fun place(account: Account, intent: OrderIntent): String {
+            sent++
+            return "test-$sent"
+        }
+
+        override suspend fun executions(account: Account, date: LocalDate) = emptyList<Execution>()
+
+        override suspend fun dailyPnl(account: Account) = emptyList<DailyPnl>()
+    }
+
+    private val source =
+        object : GroupExecutionSource {
+            override suspend fun reconcile(account: Account, orders: List<OrderRecord>) =
+                emptyList<GroupFillReport>()
+        }
+
+    private fun evidence(adjusted: Boolean = true): ResearchEvidence {
+        val today = now.atZone(SEOUL).toLocalDate()
+        val bars =
+            (1..100).map {
+                Candle(
+                    today.minusDays((101 - it).toLong()),
+                    10000.0 + it,
+                    10200.0 + it,
+                    9800.0 + it,
+                    100.0,
+                )
+            }
+        return ResearchEvidence(
+            "005930",
+            PriceHistory("005930", bars, adjusted, DataSource.LICENSED_ADJUSTED_PRICES, now),
+            FinancialReport(
+                2025,
+                "11011",
+                "test",
+                true,
+                BigDecimal(100),
+                BigDecimal(10),
+                BigDecimal(100),
+                BigDecimal(20),
+                now,
+            ),
+            emptyList(),
+            emptyList(),
+            true,
+            true,
+            now,
+        )
+    }
+
+    @Test
+    fun absentReconciliationCapabilityBlocksBeforeOrder() = runBlocking {
+        val store = MemoryStore()
+        val broker = FakeBroker()
+        val engine = TradingEngine(broker, store) { now }
+        engine.start(portfolio)
+        val coordinator =
+            GroupTradingCoordinator(store, null, GroupAlgorithmRegistry.defaults(), engine)
+        assertTrue(
+            runCatching {
+                    coordinator.tick(
+                        account,
+                        portfolio,
+                        mapOf(quote.symbol to quote),
+                        listOf(evidence()),
+                        Strategy(),
+                        now,
+                    )
+                }
+                .isFailure
+        )
+        assertEquals(0, broker.sent)
+    }
+
+    @Test
+    fun scheduleDispatchIsScopedAndWaitsForFinalFillBeforeNextOrder() = runBlocking {
+        val store = MemoryStore()
+        val broker = FakeBroker()
+        val engine = TradingEngine(broker, store) { now }
+        engine.start(portfolio)
+        val coordinator =
+            GroupTradingCoordinator(store, source, GroupAlgorithmRegistry.defaults(), engine)
+        val first =
+            coordinator.tick(
+                account,
+                portfolio,
+                mapOf(quote.symbol to quote),
+                listOf(evidence()),
+                Strategy(),
+                now,
+            )!!
+        assertEquals("g1", first.intent.groupId)
+        assertEquals("schedule:2026-09-21", first.intent.occurrence)
+        assertNull(
+            coordinator.tick(
+                account,
+                portfolio,
+                mapOf(quote.symbol to quote),
+                listOf(evidence()),
+                Strategy(),
+                now,
+            )
+        )
+        assertEquals(1, broker.sent)
+    }
+
+    @Test
+    fun scheduledBuyCannotBypassMissingAdjustedHistory() = runBlocking {
+        val store = MemoryStore()
+        val broker = FakeBroker()
+        val engine = TradingEngine(broker, store) { now }
+        engine.start(portfolio)
+        val coordinator =
+            GroupTradingCoordinator(store, source, GroupAlgorithmRegistry.defaults(), engine)
+        assertNull(
+            coordinator.tick(
+                account,
+                portfolio,
+                mapOf(quote.symbol to quote),
+                listOf(evidence(false)),
+                Strategy(),
+                now,
+            )
+        )
+        assertEquals(0, broker.sent)
+    }
+
+    @Test
+    fun recommendationTogglesAndThresholdsAreAppliedWithoutSkippingDataGate() {
+        val rule =
+            RecommendationRule(
+                enabled = true,
+                trend = false,
+                rsi = false,
+                momentum = true,
+                momentumMin = 0.0,
+                volatility = false,
+            )
+        assertTrue(GroupRecommendation.matches(rule, evidence(), now))
+        assertFalse(GroupRecommendation.matches(rule.copy(momentumMin = 100.0), evidence(), now))
+        assertFalse(GroupRecommendation.matches(rule.copy(enabled = false), evidence(), now))
+        assertFalse(GroupRecommendation.matches(rule, evidence(false), now))
+    }
+}

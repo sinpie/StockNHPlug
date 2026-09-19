@@ -5,6 +5,14 @@ import com.sinpie.stocknhplug.research.ResearchRepository
 
 /** 응용 계층의 영속 저장 포트. Android/JSON/Keystore 타입을 호출자에게 노출하지 않는다. */
 interface ApplicationStorage : OrderJournal {
+    fun strategyBook(): StrategyBook
+
+    fun saveStrategyBook(book: StrategyBook)
+
+    fun groupFills(): List<GroupFillReport>
+
+    fun saveGroupFills(reports: List<GroupFillReport>)
+
     fun settings(): Strategy
 
     fun saveSettings(settings: Strategy)
@@ -38,6 +46,7 @@ data class BrokerSession(
     val broker: Broker,
     val stream: MarketStream,
     val research: ResearchRepository,
+    val groupExecutions: GroupExecutionSource? = null,
 )
 
 /** 객체 생성은 composition root로 위임한다. 응용 계층에서 NHPlug/Android 클래스를 생성하지 않는다. */

@@ -33,6 +33,7 @@ class AppContainer private constructor(context: Context) {
                 )
             },
             TechnicalStrategy(),
+            GroupAlgorithmRegistry.defaults(),
         )
 
     companion object {

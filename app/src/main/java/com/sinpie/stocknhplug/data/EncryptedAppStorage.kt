@@ -6,6 +6,41 @@ import org.json.JSONObject
 
 /** 응용 저장 포트를 암호화 구현에 연결한다. lazy 초기화 오류도 컨트롤러의 저장소 잠금 경계로 전달된다. */
 class EncryptedAppStorage(private val vault: SecureVault) : ApplicationStorage {
+    override fun strategyBook(): StrategyBook =
+        vault.read("groupbook")?.let {
+            check(it.getInt("version") == 1)
+            GroupCodec.readStrategyBook(it.getJSONObject("book")).also(StrategyBook::validate)
+        } ?: StrategyBook.defaults()
+
+    override fun saveStrategyBook(book: StrategyBook) {
+        book.validate()
+        vault.write(
+            "groupbook",
+            JSONObject().put("version", 1).put("book", GroupCodec.encode(book)),
+        )
+    }
+
+    override fun groupFills(): List<GroupFillReport> =
+        vault
+            .read("groupfills")
+            ?.let {
+                check(it.getInt("version") == 1)
+                val rows = it.getJSONArray("items")
+                (0 until rows.length()).map { n ->
+                    GroupCodec.readGroupFillReport(rows.getJSONObject(n))
+                }
+            }
+            .orEmpty()
+
+    override fun saveGroupFills(reports: List<GroupFillReport>) {
+        vault.write(
+            "groupfills",
+            JSONObject()
+                .put("version", 1)
+                .put("items", org.json.JSONArray(reports.map(GroupCodec::encode))),
+        )
+    }
+
     private var local: LocalStore? = null
 
     private fun store(): LocalStore = local ?: LocalStore(vault).also { local = it }

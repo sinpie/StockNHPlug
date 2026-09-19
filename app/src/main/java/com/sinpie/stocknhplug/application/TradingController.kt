@@ -11,6 +11,10 @@ import kotlinx.coroutines.flow.StateFlow
 /** Compose에 노출되는 화면 상태. 키·토큰은 포함하지 않는다. connected는 초기 동기화와 구독 요청 완료이며 시세 신선도는 별도 검사한다. */
 data class AppState(
     val settings: Strategy = Strategy(),
+    val book: StrategyBook = StrategyBook.defaults(),
+    val groupAlgorithms: Map<String, String> = emptyMap(),
+    val groupPositions: Map<String, List<GroupPosition>> = emptyMap(),
+    val groupExecutionReady: Boolean = false,
     val accounts: List<Account> = emptyList(),
     val selected: Account? = null,
     val portfolio: Portfolio? = null,
@@ -35,21 +39,30 @@ class TradingController(
     private val store: ApplicationStorage,
     private val sessionFactory: SessionFactory,
     private val strategy: TradingStrategy,
+    private val groupRegistry: GroupAlgorithmRegistry = GroupAlgorithmRegistry.defaults(),
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var broker: Broker? = null
     private var socket: MarketStream? = null
     private var engine: TradingEngine? = null
     private var loop: Job? = null
+    private var groups: GroupTradingCoordinator? = null
     private var researchRepository: ResearchRepository? = null
     private val mutable = MutableStateFlow(AppState())
     val state: StateFlow<AppState> = mutable
 
     init {
         try {
+            com.sinpie.stocknhplug.trading.GroupLedger.merge(
+                store.records(),
+                emptyList(),
+                store.groupFills(),
+            )
             mutable.value =
                 mutable.value.copy(
                     settings = store.settings(),
+                    book = store.strategyBook(),
+                    groupAlgorithms = groupRegistry.names,
                     orders = store.records(),
                     events = store.events(),
                     snapshots = store.snapshots(),
@@ -89,6 +102,7 @@ class TradingController(
         broker = null
         engine = null
         researchRepository = null
+        groups = null
         change {
             it.copy(
                 hasCredentials = true,
@@ -96,6 +110,7 @@ class TradingController(
                 accounts = emptyList(),
                 selected = null,
                 portfolio = null,
+                groupPositions = emptyMap(),
                 quotes = emptyMap(),
                 executions = emptyList(),
                 pnl = emptyList(),
@@ -105,6 +120,47 @@ class TradingController(
         }
         log("인증정보를 기기 내부에 암호화 저장했습니다.")
     }
+
+    /** 그룹/전략 설정은 정지 상태에서만 변경한다. 기록이 있는 그룹의 소유권을 바꾸거나 삭제하지 않는다. */
+    fun saveBook(book: StrategyBook) = task {
+        book.validate()
+        book.plans.forEach { groupRegistry.get(it.algorithmId) }
+        val previous = state.value.book
+        val recorded = store.records().map { it.intent.groupId }.filter { it.isNotBlank() }.toSet()
+        previous.groups
+            .filter { it.id in recorded }
+            .forEach { old ->
+                val next =
+                    book.groups.find { it.id == old.id } ?: error("거래 기록이 있는 그룹은 삭제 대신 정지하세요.")
+                check(
+                    next.strategyId == old.strategyId &&
+                        next.symbols.map { it.symbol }.containsAll(old.symbols.map { it.symbol })
+                )
+                check(
+                    book.plans.single { it.id == next.strategyId }.algorithmId ==
+                        previous.plans.single { it.id == old.strategyId }.algorithmId
+                )
+            }
+        store.saveStrategyBook(book)
+        socket?.close()
+        change {
+            it.copy(
+                book = book,
+                connected = false,
+                quotes = emptyMap(),
+                research = emptyList(),
+                candidates = emptyList(),
+            )
+        }
+        log("전략·그룹 설정 저장 완료 · 계좌를 다시 연결하세요.")
+    }
+
+    /** 여러 그룹의 같은 종목은 한 번만 연구·구독한다. 주문 소유권은 그룹 ID로 따로 유지한다. */
+    private fun configuredSymbols(): List<String> =
+        state.value.book.groups
+            .flatMap { it.symbols.map { row -> row.symbol } }
+            .distinct()
+            .ifEmpty { state.value.settings.symbols }
 
     /** 전략 검증과 암호화 저장 후 구독을 해제한다. 새 종목 목록은 명시적 재연결 때 적용된다. */
     fun saveSettings(settings: Strategy) = task {
@@ -133,6 +189,7 @@ class TradingController(
                 accounts = emptyList(),
                 selected = null,
                 portfolio = null,
+                groupPositions = emptyMap(),
                 executions = emptyList(),
                 pnl = emptyList(),
                 quotes = emptyMap(),
@@ -158,6 +215,8 @@ class TradingController(
         socket = session.stream
         researchRepository = session.research
         engine = TradingEngine(session.broker, store, strategy)
+        groups = GroupTradingCoordinator(store, session.groupExecutions, groupRegistry, engine!!)
+        change { it.copy(groupExecutionReady = session.groupExecutions != null) }
         val accounts = session.broker.accounts()
         check(
             accounts.isNotEmpty() &&
@@ -183,6 +242,7 @@ class TradingController(
                 connected = false,
                 selected = account,
                 portfolio = null,
+                groupPositions = emptyMap(),
                 executions = emptyList(),
                 pnl = emptyList(),
                 quotes = emptyMap(),
@@ -196,8 +256,7 @@ class TradingController(
     /** 보유종목 보호를 관심종목보다 우선한다. 구독 상한을 넘으면 조용히 일부를 제외하지 않는다. */
     private suspend fun subscribeSelectedAccount() {
         val symbols =
-            (state.value.portfolio!!.holdings.map { it.symbol } + state.value.settings.symbols)
-                .distinct()
+            (state.value.portfolio!!.holdings.map { it.symbol } + configuredSymbols()).distinct()
         check(symbols.size <= 10) { "관심종목과 보유종목 합계가 실시간 관리 한도를 초과합니다." }
         socket!!.connect(symbols)
     }
@@ -207,10 +266,22 @@ class TradingController(
         val account = state.value.selected ?: error("계좌를 먼저 연결하세요.")
         val portfolio = broker!!.portfolio(account)
         val executions = broker!!.executions(account, LocalDate.now(SEOUL))
+        groups?.reconcile(account)
+        val groupPositions =
+            state.value.book.groups.associate {
+                it.id to
+                    com.sinpie.stocknhplug.trading.GroupLedger.positions(
+                        it,
+                        account,
+                        store.records(),
+                        store.groupFills(),
+                    )
+            }
         withContext(Dispatchers.IO) { store.snapshot(account, Environment.MOCK, portfolio) }
         change {
             it.copy(
                 portfolio = portfolio,
+                groupPositions = groupPositions,
                 executions = executions,
                 orders = store.records(),
                 snapshots = store.snapshots(),
@@ -253,7 +324,7 @@ class TradingController(
                 }
         val evidence = mutableListOf<ResearchEvidence>()
         val candidates = mutableListOf<Candidate>()
-        for (symbol in state.value.settings.symbols) {
+        for (symbol in configuredSymbols()) {
             val item = repository.inspect(symbol, mapping[symbol], year, reportCode)
             evidence += item
             strategy.evaluate(symbol, item.prices!!.candles, LocalDate.now(SEOUL))?.let {
@@ -273,11 +344,13 @@ class TradingController(
     fun startSession() {
         val s = state.value
         check(s.connected && !s.busy && !s.storageError && s.portfolio != null)
-        check(
-            s.settings.manageHoldings || s.research.any { it.buyBlockers(Instant.now()).isEmpty() }
-        ) {
-            "자동관리 동의 또는 매수 데이터 검증이 필요합니다."
-        }
+        check(s.groupExecutionReady) { "NHPlug 그룹별 체결 대사 검증 전 자동주문은 잠겨 있습니다." }
+        val enabled =
+            s.book.groups.filter {
+                it.enabled && s.book.plans.any { p -> p.id == it.strategyId && p.enabled }
+            }
+        check(enabled.isNotEmpty()) { "실행할 전략과 그룹을 켜세요." }
+        check(enabled.sumOf { it.capital } <= s.portfolio.equity) { "그룹 자본 합계가 계좌 순자산보다 큽니다." }
         check(!s.running)
         check(
             store.records().none {
@@ -299,50 +372,16 @@ class TradingController(
                     while (isActive && state.value.running && Instant.now() < until) {
                         refreshInternal()
                         val current = state.value
-                        val settings = current.settings
-                        val portfolio = current.portfolio!!
-                        if (settings.manageHoldings)
-                            for (holding in portfolio.holdings) {
-                                val quote = state.value.quotes[holding.symbol] ?: continue
-                                val reason =
-                                    engine!!.exitReason(holding, quote, settings) ?: continue
-                                if (alreadyOrdered(holding.symbol, Side.SELL)) continue
-                                engine!!.submit(
-                                    current.selected!!,
-                                    portfolio,
-                                    quote,
-                                    Side.SELL,
-                                    reason,
-                                    settings,
-                                )
-                                log("${holding.symbol} 매도 주문 접수 · 체결 확인 대기")
-                            }
-                        for (candidate in
-                            current.candidates.filter { it.score >= settings.minScore }) {
-                            val evidence =
-                                current.research.find { it.symbol == candidate.symbol } ?: continue
-                            if (
-                                evidence.buyBlockers(Instant.now()).isNotEmpty() ||
-                                    alreadyOrdered(candidate.symbol, Side.BUY)
-                            )
-                                continue
-                            val quote = state.value.quotes[candidate.symbol] ?: continue
-                            val proposedBudget = strategy.orderBudget(candidate, settings)
-                            if (proposedBudget < 10_000) continue
-                            val sized =
-                                settings.copy(
-                                    orderBudget = proposedBudget.coerceAtMost(settings.orderBudget)
-                                )
-                            engine!!.submit(
+                        val result =
+                            groups!!.tick(
                                 current.selected!!,
-                                portfolio,
-                                quote,
-                                Side.BUY,
-                                candidate.reason,
-                                sized,
+                                current.portfolio!!,
+                                current.quotes,
+                                current.research,
+                                current.settings,
+                                Instant.now(),
                             )
-                            log("${candidate.symbol} 매수 주문 접수 · 체결 확인 대기")
-                        }
+                        if (result != null) log("${result.intent.reason} · 주문 접수, 체결 대사 대기")
                         delay(15_000)
                     }
                     stop("자동매매 세션 종료")
@@ -354,16 +393,6 @@ class TradingController(
             }
         loop!!.invokeOnCompletion { scope.launch { change { it.copy(busy = false) } } }
     }
-
-    /** 불필요한 반복 주문 시도를 줄이는 응용 계층 필터. 최종 원자적 중복 방지는 TradingEngine에서 다시 수행한다. */
-    private fun alreadyOrdered(symbol: String, side: Side) =
-        store.records().any {
-            it.intent.brokerId == state.value.selected?.brokerId &&
-                it.intent.account == state.value.selected?.number &&
-                it.intent.symbol == symbol &&
-                it.intent.side == side &&
-                it.intent.at.atZone(SEOUL).toLocalDate() == LocalDate.now(SEOUL)
-        }
 
     /** 엔진 플래그를 먼저 내리고 반복 작업을 취소한다. 완료되기 전에는 데이터 삭제/재시작을 막는다. 기존 증권사 주문 취소는 아니다. */
     fun stop(reason: String = "사용자 요청으로 자동매매 정지") {
@@ -387,7 +416,13 @@ class TradingController(
         broker = null
         engine = null
         researchRepository = null
-        change { AppState(message = "기기 내 키와 기록을 삭제했습니다. 증권사 기록은 유지됩니다.") }
+        groups = null
+        change {
+            AppState(
+                groupAlgorithms = groupRegistry.names,
+                message = "기기 내 키와 기록을 삭제했습니다. 증권사 기록은 유지됩니다.",
+            )
+        }
     }
 
     /** 화면 액션의 직렬 진입 경계. 실행 중에는 반복 작업만 조회를 소유한다. 중복 클릭을 막고 busy를 복구하며 취소는 호출자에게 전파한다. */

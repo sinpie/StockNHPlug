@@ -10,6 +10,7 @@
 - Keep limitations truthful. Never describe an unexecuted device/broker test as passed, a mock order as real, an accepted order as filled, or a raw candle as adjusted.
 - Never enable live trading until every release gate has recorded evidence. This is an implementation rule, not permission to place orders.
 - Orders must be journaled before network dispatch; unknown outcomes stop trading and never automatically retry.
+- Default automation algorithms are averaging-down and rebalancing. Keep strategy/group IDs distinct; the same symbol may belong to multiple groups. Group quantity/cost must come only from reconciled cumulative fills, never accepted orders or guessed broker order-number mappings. Preserve strategy/group schedule overrides and mandatory research gates for every buy path.
 - Do not silently replace missing financial/news/history evidence with sample data or bypass policy gates.
 - Do not collect full news articles, publish market datasets, or add remote code/WebViews/accessibility automation.
 - Do not spawn agents unless explicitly requested by the user.

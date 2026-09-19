@@ -35,7 +35,7 @@ class LocalStoreInstrumentedTest {
     @After
     fun cleanup() {
         // 공유 Keystore alias는 삭제하지 않고 이 테스트가 만든 파일만 제거한다.
-        listOf("journal", "events", "snapshot").forEach(vault::delete)
+        listOf("journal", "events", "snapshot", "groupbook", "groupfills").forEach(vault::delete)
         check(directory.delete())
     }
 
@@ -83,6 +83,28 @@ class LocalStoreInstrumentedTest {
         vault.write("journal", oldFormat)
         assertEquals("nhplug", LocalStore(vault).records().single().intent.brokerId)
         assertEquals(OrderStatus.SUBMITTING, LocalStore(vault).records().single().status)
+    }
+
+    @Test
+    fun strategyGroupsAndSchedulesPersistEncrypted() {
+        val book =
+            StrategyBook(
+                StrategyBook.defaults().plans.map {
+                    it.copy(schedule = PurchaseSchedule(enabled = true))
+                },
+                listOf(
+                    StrategyGroup(
+                        id = "group-test",
+                        strategyId = "averaging",
+                        name = "테스트 그룹",
+                        symbols = listOf(GroupSymbol("005930")),
+                    )
+                ),
+            )
+        val store = com.sinpie.stocknhplug.data.EncryptedAppStorage(vault)
+        store.saveStrategyBook(book)
+        assertEquals(book, com.sinpie.stocknhplug.data.EncryptedAppStorage(vault).strategyBook())
+        assertFalse(File(directory, "groupbook.enc").readText().contains("group-test"))
     }
 
     @Test

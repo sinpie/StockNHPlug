@@ -95,7 +95,17 @@ class SecureVault(context: Context) {
     /** 앱 소유 데이터와 Keystore 키를 함께 제거한다. 호출 전에 모든 작업이 끝나야 한다. */
     @Synchronized
     fun deleteAll() {
-        listOf("credentials", "token", "journal", "settings", "research", "snapshot", "events")
+        listOf(
+                "credentials",
+                "token",
+                "journal",
+                "settings",
+                "research",
+                "snapshot",
+                "events",
+                "groupbook",
+                "groupfills",
+            )
             .forEach(::delete)
         KeyStore.getInstance("AndroidKeyStore").apply {
             load(null)

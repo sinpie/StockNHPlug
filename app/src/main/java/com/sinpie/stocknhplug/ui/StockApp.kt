@@ -21,6 +21,7 @@ import java.text.NumberFormat
 import java.time.*
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlinx.coroutines.launch
 
 private val Teal = Color(0xFF087F70)
 private val Ink = Color(0xFF172A35)
@@ -136,10 +137,10 @@ fun StockApp(controller: TradingController, start: () -> Unit, stop: () -> Unit)
         Column(Modifier.padding(padding).fillMaxSize()) {
             if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth(), color = Teal)
             key(tab) {
+                val contentScroll = rememberScrollState()
+                val uiScope = rememberCoroutineScope()
                 Column(
-                    Modifier.weight(1f)
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 20.dp),
+                    Modifier.weight(1f).verticalScroll(contentScroll).padding(horizontal = 20.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     Spacer(Modifier.height(0.dp))
@@ -152,7 +153,14 @@ fun StockApp(controller: TradingController, start: () -> Unit, stop: () -> Unit)
                                 { confirm = true },
                                 stop,
                             )
-                        1 -> StrategyScreen(state, controller::saveSettings)
+                        1 ->
+                            StrategyGroupsScreen(
+                                state,
+                                controller::saveBook,
+                                onNavigate = { uiScope.launch { contentScroll.scrollTo(0) } },
+                            ) {
+                                StrategyScreen(state, controller::saveSettings)
+                            }
                         2 -> ResearchScreen(state, controller::analyze)
                         3 -> HoldingsScreen(state, controller::refresh)
                         4 -> HistoryScreen(state, controller::refreshPnl)
@@ -323,7 +331,14 @@ private fun Dashboard(
         Button(
             if (s.running) stop else start,
             Modifier.fillMaxWidth().heightIn(min = 48.dp),
-            enabled = s.connected && !s.busy && !s.storageError,
+            enabled =
+                s.connected &&
+                    s.groupExecutionReady &&
+                    !s.busy &&
+                    !s.storageError &&
+                    s.book.groups.any { g ->
+                        g.enabled && s.book.plans.any { p -> p.id == g.strategyId && p.enabled }
+                    },
         ) {
             Text(if (s.running) "자동매매 정지" else "모의 자동매매 시작")
         }
@@ -336,6 +351,7 @@ private fun Dashboard(
     }
     Panel("오늘의 투자 체크") {
         CheckLine("계좌 연결", s.connected, "NHPlug 모의투자")
+        CheckLine("그룹 체결 대사", s.groupExecutionReady, "주문번호 연결 검증 전 자동주문 잠금")
         CheckLine("실시간 가격", s.quotes.values.any { it.fresh(Instant.now()) }, "오래된 시세는 주문에 사용하지 않음")
         CheckLine(
             "매수 데이터 검증",
@@ -379,72 +395,50 @@ private fun CheckLine(title: String, ok: Boolean, detail: String) {
 /** 편집 중 문자열을 로컬 상태로 보관하고 저장 시 도메인 유효성 검사를 수행한다. */
 @Composable
 private fun StrategyScreen(s: AppState, save: (Strategy) -> Unit) {
-    var symbols by remember(s.settings) { mutableStateOf(s.settings.symbols.joinToString(",")) }
     var order by remember(s.settings) { mutableStateOf(s.settings.orderBudget.toString()) }
     var daily by remember(s.settings) { mutableStateOf(s.settings.dailyBudget.toString()) }
     var count by remember(s.settings) { mutableStateOf(s.settings.maxPositions.toString()) }
-    var loss by remember(s.settings) { mutableStateOf(s.settings.stopLossPercent.toString()) }
-    var profit by remember(s.settings) { mutableStateOf(s.settings.takeProfitPercent.toString()) }
-    var trail by remember(s.settings) { mutableStateOf(s.settings.trailingPercent.toString()) }
     var session by remember(s.settings) { mutableStateOf(s.settings.maxSessionLoss.toString()) }
-    var score by remember(s.settings) { mutableStateOf(s.settings.minScore.toString()) }
     var manage by remember(s.settings) { mutableStateOf(s.settings.manageHoldings) }
     var error by remember { mutableStateOf("") }
-    Heading("나만의 매매 규칙", "실행 중에는 설정을 바꿀 수 없습니다.")
-    Panel("01  종목 선정") {
-        Field("관심종목 코드 · 쉼표로 구분", symbols, { symbols = it }, !s.running)
-        Field("최소 전략 점수 (50~100)", score, { score = it }, !s.running, true)
-        Text(
-            "20·60일 추세 + RSI(14) + 거래량 + ATR(14)\n재무·공시·뉴스·수정주가 검증을 모두 통과해야 매수합니다.",
-            fontSize = 12.sp,
-            color = Muted,
-            lineHeight = 20.sp,
-        )
-    }
-    Panel("02  투자 한도") {
-        Field("주문당 예산 (원)", order, { order = it }, !s.running, true)
-        Field("일 매수 한도 (원)", daily, { daily = it }, !s.running, true)
-        Field("최대 보유 종목 수", count, { count = it }, !s.running, true)
+    Heading("계좌 공통 위험 한도", "모든 전략·그룹을 합쳐 최종 검사합니다.")
+    Panel("투자 한도") {
+        Field("계좌 전체 주문당 상한 (원)", order, { order = it }, !s.running, true)
+        Field("계좌 전체 하루 매수 상한 (원)", daily, { daily = it }, !s.running, true)
+        Field("계좌 전체 최대 보유 종목 수", count, { count = it }, !s.running, true)
         Field("세션 손실 한도 (원)", session, { session = it }, !s.running, true)
-    }
-    Panel("03  보유종목 관리") {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("기존 보유종목 자동매도 동의", Modifier.weight(1f), fontSize = 13.sp)
+            Text("그룹 보유종목 자동매도 동의", Modifier.weight(1f), fontSize = 13.sp)
             Switch(manage, { manage = it }, enabled = !s.running)
         }
-        Field("손절 (%)", loss, { loss = it }, !s.running, true)
-        Field("익절 (%)", profit, { profit = it }, !s.running, true)
-        Field("고점 대비 추적 손절 (%)", trail, { trail = it }, !s.running, true)
-        Text("실시간 시세 단절·휴장·프로세스 종료 중에는 손절을 보장하지 않습니다.", fontSize = 12.sp, color = Muted)
+        Text(
+            "앱 외부에서 매수한 수량은 그룹에 자동 배정하지 않습니다. 그룹별 익절·비중 조건은 그룹 편집에서 설정하세요.",
+            fontSize = 12.sp,
+            color = Muted,
+        )
     }
     if (error.isNotEmpty()) Text(error, color = Red)
     Button(
         {
-            try {
-                val v =
-                    Strategy(
-                        symbols.split(',').map { it.trim() },
-                        order.toLong(),
-                        daily.toLong(),
-                        count.toInt(),
-                        loss.toDouble(),
-                        profit.toDouble(),
-                        trail.toDouble(),
-                        session.toLong(),
-                        score.toInt(),
-                        manage,
-                    )
-                v.validate()
-                error = ""
-                save(v)
-            } catch (_: Exception) {
-                error = "입력값과 허용 범위를 확인하세요. 예산 1만~1천만원, 종목 1~10개, 손절·추적 0.5~20%, 익절 1~50%입니다."
-            }
+            runCatching {
+                    val next =
+                        s.settings.copy(
+                            orderBudget = order.toLong(),
+                            dailyBudget = daily.toLong(),
+                            maxPositions = count.toInt(),
+                            maxSessionLoss = session.toLong(),
+                            manageHoldings = manage,
+                        )
+                    next.validate()
+                    save(next)
+                    error = ""
+                }
+                .onFailure { error = "예산·보유종목 수·손실 한도의 허용 범위를 확인하세요." }
         },
         Modifier.fillMaxWidth(),
         enabled = !s.running && !s.busy,
     ) {
-        Text("전략 저장")
+        Text("공통 한도 저장")
     }
 }
 
@@ -519,7 +513,9 @@ private fun ResearchScreen(s: AppState, analyze: (String, Int, String) -> Unit) 
         Panel(r.symbol) {
             s.candidates
                 .find { it.symbol == r.symbol }
-                ?.let { Text("전략 ${it.score}점 · ${it.reason}", color = Teal, fontSize = 13.sp) }
+                ?.let {
+                    Text("참고 기술점수 ${it.score}점 · ${it.reason}", color = Teal, fontSize = 13.sp)
+                }
             r.buyBlockers(Instant.now()).forEach { Text("• $it", color = Red, fontSize = 12.sp) }
             r.financials?.let { f ->
                 Text("${f.year} / ${f.reportCode} · 연결재무", fontSize = 12.sp, color = Muted)
@@ -614,6 +610,12 @@ private fun HistoryScreen(s: AppState, pnl: () -> Unit) {
                     }
                     Text("${r.intent.quantity}주 × ${won(r.intent.limitPrice)}", fontSize = 16.sp)
                     Text(r.intent.reason, fontSize = 12.sp, color = Muted)
+                    if (r.intent.groupId.isNotBlank())
+                        Text(
+                            "${s.book.plans.find { it.id == r.intent.strategyId }?.name ?: r.intent.strategyId} / ${s.book.groups.find { it.id == r.intent.groupId }?.name ?: r.intent.groupId}",
+                            fontSize = 12.sp,
+                            color = Teal,
+                        )
                     Text(
                         "${r.intent.brokerId} · •••• ${r.intent.account.takeLast(4)}",
                         fontSize = 11.sp,

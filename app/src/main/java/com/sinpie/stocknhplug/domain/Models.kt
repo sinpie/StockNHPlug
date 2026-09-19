@@ -130,6 +130,9 @@ data class OrderIntent(
     val reason: String,
     val at: Instant,
     val brokerId: String = "nhplug",
+    val strategyId: String = "",
+    val groupId: String = "",
+    val occurrence: String = "",
 )
 
 data class OrderRecord(

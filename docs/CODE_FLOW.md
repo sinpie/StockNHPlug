@@ -124,3 +124,7 @@ flowchart TD
 의미 있는 변경 뒤 `./gradlew testDebugUnitTest lintDebug assembleDebug`와 `./gradlew bundleRelease`를 실행합니다. 기기 테스트는 폐기 가능한 설치에서만 수행합니다. 검증하지 못한 조건도 VERIFICATION에 적고 모든 정책/구현 변경은 CHANGELOG에 남깁니다.
 
 API와 전략의 구체적인 교체 계약 및 의존성 방향은 [EXTENDING.md](EXTENDING.md)를 참조합니다. Android 서비스는 platform, 공통 NH 전송기는 infrastructure/nh, 가격이력은 marketdata에 배치합니다.
+
+## 전략 그룹 확장 후 현재 흐름
+
+화면 StrategyGroupsScreen → TradingController.saveBook → StrategyBook.validate → EncryptedAppStorage.saveStrategyBook → groupbook 암호화 파일입니다. 계좌 연결 시 BrokerSession.groupExecutions가 있으면 GroupTradingCoordinator를 통해 대사합니다. NHPlug는 해당 제공자가 없어 시작이 차단됩니다. 검증된 제공자가 있는 구성에서는 refreshInternal → reconcile → GroupLedger.merge/positions → saveGroupFills → tick(그룹 매도/정기매수/추천/알고리즘) → TradingEngine.submit(allocation) → 사전 저널 → Broker.place 순서입니다. 주문 접수는 그룹 수량을 바꾸지 않으며 확정 누적 체결만 반영합니다. 이전 단일 전략 반복 경로는 그룹 조정자로 교체되었습니다.

@@ -65,3 +65,7 @@ flowchart TD
 `python scripts/check_architecture.py`를 CI에서 실행합니다. domain/trading의 어댑터 역참조, 응용 계층의 Android/HTTP/저장 구현 의존, 연구 정책의 제공자 직접 생성, UI의 보안 저장소 접근을 소스 의존성 기준으로 검사합니다. 현재는 단일 Android Gradle 모듈 내 패키지 분리이며 Kotlin 컴파일러 수준의 다중 모듈 격리는 아닙니다.
 
 `ResearchRepositoryTest`는 가격 공급자 교체와 오류/종목 불일치를 검사합니다. `TradingEngineTest`는 교체한 청산 정책에도 동의·시세 검사가 유지되는지, 다른 증권사의 주문이 섞이지 않는지 검사합니다. LocalStore 기기 테스트는 증권사/계좌/환경별 스냅샷 분리를 확인합니다. 실제 새 API는 이 테스트만으로 인증되지 않으며 해당 증권사의 모의계좌 검증이 필요합니다.
+
+## 그룹 전략 확장
+
+현재 기본 자동매매 실행은 TradingStrategy 단일 알고리즘 대신 GroupAlgorithm을 사용합니다. 새 GroupAlgorithm 구현을 AppContainer의 GroupAlgorithmRegistry에 등록하면 전략 추가 UI에 표시됩니다. GroupContext는 해당 그룹의 확정 수량/원가/현금과 유효 시세만 제공하며, GroupDecision은 희망 주문입니다. 실제 전송은 GroupTradingCoordinator와 TradingEngine의 공통 위험/저널 검사를 거칩니다. 필요한 고유 설정은 StrategyGroup/GroupCodec/편집 UI와 테스트를 함께 확장합니다. BrokerSession에 GroupExecutionSource를 제공하지 않은 API는 그룹 자동주문을 할 수 없습니다. 상세 계약은 [GROUP_STRATEGIES.md](GROUP_STRATEGIES.md)를 참조합니다.

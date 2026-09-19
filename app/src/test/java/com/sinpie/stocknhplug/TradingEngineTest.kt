@@ -222,6 +222,52 @@ class TradingEngineTest {
     }
 
     @Test
+    fun differentGroupsCanBuySameSymbolWhileOwnDuplicateIsBlocked() = runBlocking {
+        val b = FakeBroker()
+        val j = Journal()
+        val e = TradingEngine(b, j) { now }
+        e.start(portfolio)
+        val first = GroupAllocation("averaging", "group-one", "schedule:2026-09", 1, 0, 100000)
+        e.submit(account, portfolio, quote, Side.BUY, "group", Strategy(), first)
+        e.submit(
+            account,
+            portfolio,
+            quote,
+            Side.BUY,
+            "group",
+            Strategy(),
+            first.copy(groupId = "group-two"),
+        )
+        assertTrue(
+            runCatching {
+                    e.submit(account, portfolio, quote, Side.BUY, "group", Strategy(), first)
+                }
+                .isFailure
+        )
+        assertEquals(2, b.sent)
+        assertEquals(setOf("group-one", "group-two"), j.records().map { it.intent.groupId }.toSet())
+    }
+
+    @Test
+    fun groupedSellIsCappedToGroupOwnership() = runBlocking {
+        val b = FakeBroker()
+        val e = TradingEngine(b, Journal()) { now }
+        e.start(portfolio)
+        val p = portfolio.copy(holdings = listOf(Holding("005930", "test", 20, 10000, 10000, 0)))
+        val result =
+            e.submit(
+                account,
+                p,
+                quote,
+                Side.SELL,
+                "group",
+                Strategy(manageHoldings = true),
+                GroupAllocation("rebalance", "g1", "rebalance", 10, 3, 0),
+            )
+        assertEquals(3L, result.intent.quantity)
+    }
+
+    @Test
     fun durableIntentExistsBeforeNetwork() = runBlocking {
         val b = FakeBroker()
         val j = Journal()

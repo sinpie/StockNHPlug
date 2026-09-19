@@ -4,6 +4,12 @@
 
 진입점부터 함수 호출을 따라가는 설명과 흐름도는 [CODE_FLOW.md](CODE_FLOW.md)를 참조합니다.
 
+## 전략 그룹 실행의 현재 진입점
+
+현재 사용자 자동매매는 TradingController.startSession → GroupTradingCoordinator.tick → GroupAlgorithm/추천/정기매수 → TradingEngine.submit 경로입니다. 기존 TechnicalStrategy/SignalEngine 점수는 참고 분석과 호환 계약으로 남기며 실제 기본 정책은 AveragingDownAlgorithm과 RebalancingAlgorithm입니다. 전략/그룹 모델과 함수별 상세는 [GROUP_STRATEGIES.md](GROUP_STRATEGIES.md)를 참조합니다.
+
+GroupAlgorithmRegistry는 AppContainer에서 주입합니다. GroupExecutionSource는 확정 체결과 앱 주문의 대응 포트이며 NHPlug에서는 아직 null입니다. GroupLedger가 누적 체결을 그룹별로 재생하고 GroupCodec/EncryptedAppStorage가 설정과 대사를 암호화 보관합니다. AppState에 book/groupPositions/groupExecutionReady/groupAlgorithms를 추가했습니다. 전략 변경은 saveBook에서 검증하며 기록이 있는 그룹의 삭제/소유권 이동을 금지합니다.
+
 ## 0. 조립·교체 계약
 
 `AppContainer`는 Android applicationContext를 소유하는 의존성 조립 지점입니다. `TradingController(ApplicationStorage, SessionFactory, TradingStrategy)`를 생성하고 Activity/Service에 동일 객체를 제공합니다. 구현 교체 방법과 제약은 [EXTENDING.md](EXTENDING.md)에 정리합니다.
@@ -23,7 +29,7 @@
 - `saveCredentials`: 키·secret·OpenDART 키를 기기 저장소에 암호화하고 기존 토큰과 연결을 무효화합니다. UI는 저장 후 입력 문자열을 비웁니다.
 - `saveSettings`: `Strategy.validate` 후 설정을 암호화 저장. 실행 중 편집 금지.
 - `analyze`: 관심종목별 가격·재무·공시 근거를 수집하고 지표를 계산합니다. 매수 가능 여부는 점수와 별개로 `ResearchEvidence.buyBlockers`가 결정합니다.
-- `startSession`: 검증된 잔고를 기준으로 세션 시작. 15초 단위 잔고/체결 조회, 가격 추적에 따른 매도, 근거 검증을 통과한 신규매수 순서입니다. 최장 6시간이며 재부팅 후 자동 재시작하지 않습니다.
+- `startSession`: 검증된 잔고를 기준으로 세션 시작. 15초 단위 잔고/체결 대사와 GroupTradingCoordinator 평가를 수행합니다. 그룹 체결 대사 제공자가 없으면 시작 자체를 차단합니다. 최장 6시간이며 재부팅 후 자동 재시작하지 않습니다.
 - `stop`: 매매 계층 정지 플래그를 먼저 내리고 루프를 취소합니다. 이미 접수된 주문 취소 기능은 아닙니다.
 - `refreshPnl`: 증권사 최근 30일 일별 손익을 별도 조회합니다. 앱 주문 손익으로 오표시하지 않습니다.
 - 오류 메시지는 통제된 문구만 로그로 전달합니다. HTTP URL/본문/예외 원문을 사용자 로그에 기록하지 않습니다.
@@ -46,7 +52,7 @@
 NHPlug 전문과 독립적인 주문 상태·위험 관리 계층입니다. `Broker`, `OrderJournal`, `ExitPolicy`, 주입 가능한 시계를 받으므로 JVM에서 오류 시나리오를 검증할 수 있습니다.
 
 - `exitReason`: 보유 평균가, 세션 내 최고가, 현재 체결가를 추적하여 손절/익절/추적손절 신호를 생성합니다. 세션 재시작 시 고점은 초기화됩니다. 유효 시세와 고점을 교체 가능한 ExitPolicy에 전달하되 주문 위험 검사는 엔진이 유지합니다.
-- `submit`: Mutex로 직렬화. 실행 상태 → 계좌 환경 → 서울 시간 정규 세션 → 실시간 시세 15초 → 잔고 60초 → 세션 손실 → 호가 스프레드 1% → 미확인 주문 → 종목/방향/일자 중복 → 예산/보유수/가능수량 순서로 검사합니다.
+- `submit`: Mutex로 직렬화. 실행 상태 → 계좌 환경 → 서울 시간 정규 세션 → 실시간 시세 15초 → 잔고 60초 → 세션 손실 → 호가 스프레드 1% → 미확인 주문 → 그룹/종목/방향/일자 중복 → 예산/보유수/가능수량 순서로 검사합니다.
 - 매수는 매도 1호가, 매도는 매수 1호가 기준 지정가 IOC입니다. 무제한 시장가 추격이나 자동 정정은 하지 않습니다. 가격 추적은 **진입/청산 판단**이고, 접수 이후 재호가 알고리즘은 아닙니다.
 - 주문 가능 수량은 증권사에서 재조회합니다. 매수는 현금 가능수량만 사용하고 1% 현금 완충을 적용합니다.
 - 전송 직전 `SUBMITTING`을 암호화 파일에 원자적으로 기록합니다. 응답에 주문번호가 있으면 `ACCEPTED`; 전송/결과 기록 예외는 먼저 엔진을 정지한 뒤 `UNKNOWN` 저장을 시도합니다. 저장 자체가 실패해 `SUBMITTING`이 남아도 이후 주문을 차단합니다. HTTP 타임아웃에도 자동 재전송하지 않습니다.

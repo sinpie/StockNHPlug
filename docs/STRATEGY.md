@@ -31,3 +31,7 @@
 ## 전략 교체 경계
 
 현재 기본 알고리즘은 TechnicalStrategy가 TradingStrategy를 구현해 조립합니다. 후보 평가는 SignalEngine, 청산 신호는 ThresholdExitPolicy, ATR에 따른 희망 예산은 TechnicalStrategy가 담당합니다. TradingEngine은 시세 검증·세션 고점·손실/예산/중복/사전저널을 유지합니다. 다른 전략은 AppContainer에서 빌드 시 교체하며 초과 희망 예산을 사용자 설정 이하로 제한합니다. 실행 중 원격 코드나 플러그인 교체는 지원하지 않습니다. 자세한 계약은 EXTENDING.md를 참조합니다.
+
+## 현재 기본 전략은 그룹 기반 물타기·리밸런싱
+
+이 문서의 기술점수는 참고 지표로 유지합니다. 실제 실행 정책은 GroupAlgorithmRegistry의 AveragingDownAlgorithm/RebalancingAlgorithm이며 구체적인 매수/매도 규칙, 5개 추천 조합, 지표 AND 조건, 그룹별 원가, 일정 상속과 회차 중복 방지는 [GROUP_STRATEGIES.md](GROUP_STRATEGIES.md)에 정의했습니다. 모든 설정은 기본 꺼짐이며 NHPlug 그룹 체결 대사 게이트와 데이터 게이트가 미완료인 동안 실제 자동주문을 보내지 않습니다.

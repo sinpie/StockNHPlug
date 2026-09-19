@@ -43,3 +43,7 @@
 ## 2026-09-19 제공자 계층 분리
 
 NHPlug 가격이력은 marketdata/NhPriceHistoryProvider로 이동하고 주문 Broker에서 분리했습니다. OpenDART는 research/provider/DartClient로 이동해 CorporateResearchProvider를 구현합니다. 가격·재무·뉴스는 AppContainer에서 독립적으로 주입합니다. 이용 출처·인증 호스트·허용 범위는 바뀌지 않았으며 새 사이트/API를 추가하지 않았습니다. 뉴스 계약/수정주가 미검증 차단도 유지합니다.
+
+## 그룹 체결 대사 게이트 (2026-09-19)
+
+기존에 확보한 NHPlug 공식 OpenAPI의 cashBuy/cashSell 응답은 mkt_orr_no, dailyOrderExecution 응답은 itg_orr_no입니다. d2 실시간 예제의 orderno 역시 두 ID 사이의 영속 대응과 재접속 누락 복구를 입증하지 않습니다. 숫자 길이·종목·수량·시간으로 관계를 추정하지 않습니다. 공식 대응/대사 명세와 모의계좌 증거 확보 전 GroupExecutionSource를 주입하지 않으며 그룹 자동주문을 차단합니다. 이번 변경에 새 데이터 사이트 수집이나 출처 권한 승격은 없습니다.
