@@ -32,6 +32,7 @@ flowchart TB
 ## 문서
 
 - [계층 및 클래스 상세](docs/ARCHITECTURE.md)
+- [진입점·함수 흐름도·코드 수정 안내](docs/CODE_FLOW.md)
 - [데이터 출처·이용조건·보관 방침](docs/DATA_SOURCES.md)
 - [전략·가격 추적·연구 근거](docs/STRATEGY.md)
 - [보안 설계·위협 모델](docs/SECURITY.md)

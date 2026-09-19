@@ -12,15 +12,19 @@ Windows, Android Studio JBR, Gradle 8.13, AGP 8.12.2, Kotlin 1.9.0, Android SDK 
 |---|---|---|
 | Debug APK | 빌드 성공 | `app/build/outputs/apk/debug/app-debug.apk` |
 | Release AAB | 빌드 성공, 업로드 서명 미설정 | `app/build/outputs/bundle/release/app-release.aab` |
-| JVM unit tests | 21개 통과, 실패/오류 0 | `app/build/reports/tests/testDebugUnitTest/index.html` |
+| JVM unit tests | 26개 통과, 실패/오류 0 | `app/build/reports/tests/testDebugUnitTest/index.html` |
 | Android Lint | 오류 0, 라이브러리/Gradle 최신 버전 알림 경고 존재 | `app/build/reports/lint-results-debug.html` |
 | 출처/로그 정적 검사 | 통과 | `python scripts/audit_sources.py` |
-| Android instrumentation | 3개 통과, 실패 0 | Android 11 / API 30 x86_64 에뮬레이터: Keystore round-trip/변조 방어, 6개 탭 이동 |
+| Android instrumentation | 6개 통과, 실패 0 | Android 11 / API 30 x86_64: Keystore 2개, UI 탭 이동 1개, LocalStore 3개 |
 | 실제 NHPlug 모의 계좌 | 미실행 | 사용자 기기 키·모의계좌 필요 |
 | 실제 자금 주문 | 미실행, 잠금 | 기본 구성은 모의 계좌만 제공 |
 | Play 심사 | 미제출 | RELEASE.md의 게이트 미완료 |
 
 ## JVM 테스트 범위
+
+- 결과 저널 저장 실패 후에도 정지, 실행 중 세션 손실 기준 재설정 거절.
+- 15초/60초를 초과하는 1나노초 경계 및 미래 잔고 차단.
+- 다른 종목과 비정규장 가격의 청산 신호 차단.
 
 - 주문 사전 영속 예약 확인, 동시에 들어오는 10개 신호의 중복 주문 방지.
 - 통신 타임아웃 후 UNKNOWN 전환·정지·다음 주문 차단.
@@ -33,6 +37,10 @@ Windows, Android Studio JBR, Gradle 8.13, AGP 8.12.2, Kotlin 1.9.0, Android SDK 
 - 공식 WebSocket 예제 파싱 및 지연 거절.
 
 ## 미검증 또는 제한된 범위
+
+2026-09-19 재검증: `testDebugUnitTest lintDebug assembleDebug bundleRelease connectedDebugAndroidTest`를 로컬 실행했습니다. 폐기 가능한 API 30 에뮬레이터에서 미확인 주문 복원/중복 예약 거절, 잘못된 저널 배열 실패, 동일 날짜 계좌/환경별 스냅샷 구분을 확인했습니다. LocalStore 테스트는 별도 임시 디렉터리를 사용하며 사용자 파일이나 공유 Keystore 키를 삭제하지 않습니다. 린트는 오류 0, 의존성 버전 관련 경고 12개입니다. 컴파일러의 기존 아이콘 deprecated 및 중복 초기화 알림도 남아 있습니다.
+
+CI 최초 실행 `35446104910`은 Android SDK에서 제거된 `tools` 패키지를 요구해 컴파일 전 실패했습니다. setup-android 패키지를 `platform-tools`로 명시해 수정했습니다. 원격 재실행 결과는 확인 후 추가합니다.
 
 실물 기기/다른 OS별 Keystore, 생체/기기 인증, API 31+ 오버레이 차단, API 34+ foreground specialUse, 제조사 절전, 실제 장중 API/WS, 부분체결/정정/취소/미확인 주문 대사, 휴장·시스템 시계 조작, 실제 토큰 재발급, 장기 실행, 거래비용 포함 전략 성과는 별도 검증이 필요합니다. UI 테스트는 인증 우회가 없는 별도 테스트 호스트에서 실행했으며 production MainActivity의 인증 성공을 검증한 것은 아닙니다. Google Play 정책 준수의 최종 확인과 NH/DART/뉴스 제공자의 배포·데이터 권한 검토는 자동 테스트로 대체할 수 없습니다.
 
