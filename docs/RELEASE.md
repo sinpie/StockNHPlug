@@ -39,3 +39,11 @@
 - [ ] 제조사별 장시간 세션·정기매수 시각·휴장/월말/프로세스 종료 검증.
 
 게이트 완료 전 그룹 자동주문을 활성화하지 않습니다. 현재 예약은 foreground 세션 내 평가이며 앱 종료 상태의 예약 실행 서비스가 아닙니다.
+
+## 지속 실행 추가 검증
+- [ ] specialUse 지속 매매 기능의 Play Console 선언·동영상·심사 근거 확보
+- [ ] 최근 앱 목록 제거/화면 잠금/다른 앱 사용 시 실제 모의 세션 유지
+- [ ] Doze·제조사 절전·사용자 강제 정지·시스템 timeout 처리 확인
+- [ ] 장시간 실행의 배터리·열·토큰 만료·거래일 전환 확인
+
+Android의 dataSync 6시간 제한을 회피하기 위한 타입 변경이 아닙니다. 기존 specialUse의 사용자 요청 매매 기능에 대해 심사 적합성을 별도 확인해야 합니다. [FGS 유형](https://developer.android.com/develop/background-work/services/fgs/service-types), [Play 요구사항](https://support.google.com/googleplay/android-developer/answer/13392821?hl=en), [Doze 제한](https://developer.android.com/training/monitoring-device-state/doze-standby)을 2026-09-19 확인했습니다. Doze는 네트워크/CPU 실행을 지연할 수 있으므로 휴대폰만으로 무중단 주문을 보장하지 않습니다.

@@ -364,12 +364,13 @@ class TradingController(
         }
         engine!!.start(s.portfolio)
         change { it.copy(running = true) }
-        log("모의 자동매매 시작 · 최대 6시간 세션")
+        log("모의 자동매매 시작 · 사용자가 정지할 때까지 백그라운드 감시")
         loop =
             scope.launch {
-                val until = Instant.now().plusSeconds(6 * 3600)
                 try {
-                    while (isActive && state.value.running && Instant.now() < until) {
+                    // 서비스가 수명을 소유한다. 화면 종료나 임의의 시간 제한으로 매매를 끊지 않는다.
+                    // OS 종료·네트워크/원장 오류는 여전히 안전 정지하며 주문을 자동 재전송하지 않는다.
+                    while (isActive && state.value.running) {
                         refreshInternal()
                         val current = state.value
                         val result =

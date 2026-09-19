@@ -29,7 +29,7 @@ GroupAlgorithmRegistry는 AppContainer에서 주입합니다. GroupExecutionSour
 - `saveCredentials`: 키·secret·OpenDART 키를 기기 저장소에 암호화하고 기존 토큰과 연결을 무효화합니다. UI는 저장 후 입력 문자열을 비웁니다.
 - `saveSettings`: `Strategy.validate` 후 설정을 암호화 저장. 실행 중 편집 금지.
 - `analyze`: 관심종목별 가격·재무·공시 근거를 수집하고 지표를 계산합니다. 매수 가능 여부는 점수와 별개로 `ResearchEvidence.buyBlockers`가 결정합니다.
-- `startSession`: 검증된 잔고를 기준으로 세션 시작. 15초 단위 잔고/체결 대사와 GroupTradingCoordinator 평가를 수행합니다. 그룹 체결 대사 제공자가 없으면 시작 자체를 차단합니다. 최장 6시간이며 재부팅 후 자동 재시작하지 않습니다.
+- `startSession`: 검증된 잔고를 기준으로 세션 시작. 15초 단위 잔고/체결 대사와 GroupTradingCoordinator 평가를 수행합니다. 그룹 체결 대사 제공자가 없으면 시작 자체를 차단합니다. 사용자 정지 또는 안전 오류까지 수행하며 앱 자체의 시간 만료는 없습니다. 최근 앱 목록 제거로 정지하지 않지만 재부팅/프로세스 종료 후 자동 재시작하지 않습니다.
 - `stop`: 매매 계층 정지 플래그를 먼저 내리고 루프를 취소합니다. 이미 접수된 주문 취소 기능은 아닙니다.
 - `refreshPnl`: 증권사 최근 30일 일별 손익을 별도 조회합니다. 앱 주문 손익으로 오표시하지 않습니다.
 - 오류 메시지는 통제된 문구만 로그로 전달합니다. HTTP URL/본문/예외 원문을 사용자 로그에 기록하지 않습니다.

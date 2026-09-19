@@ -33,7 +33,7 @@ flowchart TD
     Service --> Stop
 ```
 
-`MainActivity.onStop`은 UI를 다시 잠급니다. Activity가 멈춰도 사용자가 시작한 서비스 세션은 유지될 수 있습니다. 서비스 정지 알림, `onTaskRemoved`, `onDestroy`는 컨트롤러 정지를 호출합니다. `START_NOT_STICKY`로 OS가 프로세스를 복구해 자동 주문하는 경로는 없습니다. 화면 인증 성공은 실제 기기의 별도 검증 대상입니다.
+`MainActivity.onStop`은 UI를 다시 잠급니다. Activity가 멈춰도 사용자가 시작한 서비스 세션은 유지될 수 있습니다. 서비스 정지 알림과 `onDestroy`는 컨트롤러 정지를 호출합니다. `onTaskRemoved`는 세션을 정지하지 않으며 최근 앱 목록 제거 후에도 알림과 서비스는 유지됩니다. `START_NOT_STICKY`로 OS가 프로세스를 복구해 자동 주문하는 경로는 없습니다. 화면 인증 성공은 실제 기기의 별도 검증 대상입니다.
 
 `AppContainer.get`이 applicationContext로 프로세스 단일 조립 객체를 만들고 controller를 제공합니다. 컨트롤러는 저장소/세션 팩토리/전략 포트만 생성자로 받습니다. 초기화 시 암호화된 설정·주문·이벤트·스냅샷을 읽지만 키는 `AppState`에 넣지 않습니다. 저장소 읽기 실패는 `storageError`로 잠그며 빈 정상 저널로 대체하지 않습니다.
 
@@ -73,7 +73,7 @@ sequenceDiagram
 
 ## 자동매매 반복과 주문 상태
 
-`startSession`은 연결·작업 상태·저장소·보유관리 동의 또는 매수 근거·미확인 주문을 검사합니다. `TradingEngine.start`가 세션 기준 순자산과 추적 고점을 초기화하며 실행 중 재호출은 거절합니다. 이후 최대 6시간 동안 잔고/체결 조회 → 보유종목 청산 평가 → 추천 매수 평가 → 15초 대기 순서로 동작합니다.
+`startSession`은 연결·작업 상태·저장소·보유관리 동의 또는 매수 근거·미확인 주문을 검사합니다. `TradingEngine.start`가 세션 기준 순자산과 추적 고점을 초기화하며 실행 중 재호출은 거절합니다. 이후 사용자 정지 또는 안전 오류까지 잔고/체결 조회 → 그룹 전략 평가 → 15초 대기 순서로 동작합니다. 앱 자체의 6시간 만료는 제거했습니다.
 
 ```mermaid
 flowchart TD

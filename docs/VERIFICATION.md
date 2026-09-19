@@ -8,6 +8,10 @@ Windows, Android Studio JBR, Gradle 8.13, AGP 8.12.2, Kotlin 1.9.0, Android SDK 
 
 ## 실행 결과
 
+### 지속 실행 변경 (2026-09-20)
+
+앱 자체 6시간 만료/최근 앱 목록 제거 시 정지 제거와 시스템 timeout 처리 후 `testDebugUnitTest lintDebug assembleDebug bundleRelease`가 성공했습니다. JVM 52개와 출처·계층 검사 통과. 이번 변경의 실제 서비스 장시간 실행/화면 꺼짐/최근 앱 제거/Doze/Android 15+ timeout 기기 검증은 미실행이며, 이전 Android 9개 통과를 새 수명주기 검증으로 간주하지 않습니다. NH 그룹 자동주문은 기존 검증 게이트로 잠겨 있습니다. NamuMagic 참조가 필요한 적응형 추적은 아직 미구현이며 [추적 요구사항](PRICE_TRACKING.md)에 구분했습니다.
+
 | 검증 | 결과 | 근거 |
 |---|---|---|
 | Debug APK | 빌드 성공 | `app/build/outputs/apk/debug/app-debug.apk` |

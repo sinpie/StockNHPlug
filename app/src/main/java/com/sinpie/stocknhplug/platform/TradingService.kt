@@ -53,7 +53,7 @@ class TradingService : Service() {
             Notification.Builder(this, "trading")
                 .setSmallIcon(R.drawable.ic_launcher)
                 .setContentTitle("모의 자동매매 실행 중")
-                .setContentText("가격 추적 및 위험 한도 감시 · 최대 6시간")
+                .setContentText("백그라운드 가격 추적 · 알림에서 즉시 정지 가능")
                 .setVisibility(Notification.VISIBILITY_PRIVATE)
                 .setOngoing(true)
                 .setContentIntent(open)
@@ -74,9 +74,14 @@ class TradingService : Service() {
         return START_NOT_STICKY
     }
 
-    /** 최근 앱 목록에서 제거하면 실행을 정지한다. 주문 자동 복구는 하지 않는다. */
+    /** 최근 앱 목록 제거는 UI만 닫는다. 사용자가 시작한 서비스와 정지 알림은 유지한다. */
     override fun onTaskRemoved(rootIntent: Intent?) {
-        controller.stop("앱 종료로 자동매매 정지")
+        super.onTaskRemoved(rootIntent)
+    }
+
+    /** 시스템이 실행 시간을 제한한 경우 즉시 정리한다. 타입 변경/OS 정책에도 정지를 존중한다. */
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        controller.stop("시스템 실행 제한으로 자동매매 정지")
         stopSelf()
     }
 
