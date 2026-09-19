@@ -24,6 +24,8 @@ Windows, Android Studio JBR, Gradle 8.13, AGP 8.12.2, Kotlin 1.9.0, Android SDK 
 
 ### 전략 그룹 확장 최종 검증 (2026-09-19)
 
+구현 커밋 `a78d2cc2e9ff11d67448be1dfccbe91595bb1dcd`의 [GitHub Actions 35450060400](https://github.com/sinpie/StockNHPlug/actions/runs/35450060400)이 성공했습니다. Ubuntu/JDK 17에서 단위 테스트·린트·Debug APK·Release AAB·출처 검사·계층 의존성 검사를 통과했습니다. 아래 Android 9개는 로컬 API 30 결과이며 CI 기기 테스트 결과가 아닙니다. Actions 버전/Node 런타임 폐기 예정 경고는 남아 있습니다. 이 결과를 추가한 문서 전용 커밋은 CI를 재실행하지 않습니다.
+
 `testDebugUnitTest lintDebug assembleDebug bundleRelease connectedDebugAndroidTest` 최종 실행 성공. JVM 52개, API 30 Android 9개 통과, 린트 오류 0/기존 버전 경고 12개입니다. 추가 검증은 동일 종목 그룹별 원가·수량·손익 격리, 누적 부분체결 중복 방지, 후퇴/알 수 없는 체결/초과 매도 거절, 정기매수 회차·서울 시각·월말/주말 처리, 5개 프리셋과 설정 직렬화, 일정 상속/끄기, 물타기/리밸런싱 계산, 다른 그룹 동일 종목 주문, 그룹 보유량 매도 상한, 대사 제공자 미연결 잠금, 정기매수의 데이터 게이트 유지입니다.
 
 Android에서는 그룹 설정의 암호화 복원, 전략 관리/지표 조합/정기매수 화면 이동을 추가 확인했습니다. 초기에 API 31 전용 BigInteger 변환으로 린트가 실패해 범위 검증 후 호환 변환으로 수정했습니다. UI 테스트의 중첩 가로/세로 스크롤 대상 오류를 진단해 실제 세로 부모를 먼저 스크롤하도록 수정했고 앱의 전략/탭 전환 시 상단 이동도 추가했습니다. 실패를 통과로 표시하지 않고 수정 후 전체 테스트를 재실행했습니다.
