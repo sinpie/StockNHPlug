@@ -1,5 +1,7 @@
 # 변경 이력
 
+- 2026-09-20: 파킹 구현 `ccb5be3`의 원격 CI [35451470436](https://github.com/sinpie/StockNHPlug/actions/runs/35451470436) 성공 기록 추가. 실제 NH 계좌/파킹 체결 검증은 미실행입니다.
+
 - 2026-09-20: 파킹 변경 로컬 검증은 JVM 63개/Android 10개, 린트·APK/AAB·계층/출처 검사 통과. 최초 병행 실행의 Android 입력 timeout과 단독 재실행 결과를 VERIFICATION에 구분해 기록했습니다.
 
 - 2026-09-19: 전략 그룹 구현 `a78d2cc`의 원격 CI [35450060400](https://github.com/sinpie/StockNHPlug/actions/runs/35450060400) 성공 기록. 전략 목록 테스트 호스트 캡처와 육안 확인 결과를 UX 문서에 반영했습니다. 실제 NH 그룹 주문은 여전히 잠금 상태입니다.
