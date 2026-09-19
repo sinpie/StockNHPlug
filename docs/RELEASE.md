@@ -1,0 +1,32 @@
+# Google Play 출시 게이트
+
+검토일 2026-09-19. 기술적 빌드 성공과 스토어 승인·금융업 허용은 별개입니다. 현재는 검증용 0.1.0이며 아래 미완료 항목이 남아 있습니다.
+
+## 반영한 사항
+
+- Kotlin, Android targetSdk 36. [공식 target API 안내](https://developer.android.com/google/play/requirements/target-sdk)는 2026-08-31부터 신규/업데이트에 API 36을 요구합니다.
+- 광고/분석 SDK 없음, 최소 권한, 암호화 키, 백업 제외, UI 개인정보 안내, 데이터 삭제 기능.
+- 수익 보장/허위 수익/실제 계좌인 것처럼 보이는 샘플 데이터 없음. 앱은 NH투자증권 공식 앱이라고 주장하지 않습니다.
+- 사용자 시작·지속 알림·즉시 정지 가능한 foreground service. `specialUse` 설명을 manifest에 선언했고 부팅 자동시작을 구현하지 않았습니다.
+- 실거래 주문 컴파일 설정 기본 잠금. 키나 서명키를 저장소/CI에 포함하지 않습니다.
+
+## 제출 전 필수 업무
+
+- [ ] 운영자 명칭, 지원 연락처, 공개 HTTPS 개인정보 정책 URL 확정. `PRIVACY.md` 초안의 운영자 빈 항목 해소 후 앱 내에도 연결.
+- [ ] 금융 기능 신고에서 실제 제공 기능(주식 거래/포트폴리오 관리 등)을 정확하게 신고. [Financial features declaration](https://support.google.com/googleplay/android-developer/answer/13849271).
+- [ ] 배포 국가의 금융·투자자문·자동매매 관련 규정과 앱 운영 형태 확인. [Google Play 금융 서비스 정책](https://support.google.com/googleplay/android-developer/answer/9876821). 개인 자기계좌 도구라는 설명만으로 법적 면제를 추정하지 않음.
+- [ ] 주식 거래 등 금융 서비스를 제공하는 앱은 조직 개발자 계정 요건에 해당하므로 조직 인증·사업자 증빙을 준비. [계정 유형 공식 안내](https://support.google.com/googleplay/android-developer/answer/13634885).
+- [ ] NHPlug의 제3자 배포 앱 사용 및 시세 표시/가공 범위, 자동매매 동작에 대한 공식 확인. 실제 계정 약관·사용신청 완료.
+- [ ] 뉴스 분석권과 수정주가 기준 확보. `DATA_SOURCES.md`의 미확정 항목 해소. 권리 확인 없이 `newsLicensed`/`adjusted` 플래그를 바꾸지 않음.
+- [ ] Data safety에서 실제 기기 밖으로 전송되는 인증·금융 데이터와 제공자 역할을 정확하게 신고. 개발자 서버가 없다는 이유만으로 무조건 ‘수집 없음’으로 신고하지 않음. [Data safety 안내](https://support.google.com/googleplay/android-developer/answer/10787469), [User data 정책](https://support.google.com/googleplay/android-developer/answer/10144311).
+- [ ] Foreground service 용도, 사용자 시작 흐름, 알림 정지 시연 영상, `specialUse` 사용 정당성 제출. 심사 결과에 따라 백그라운드 실행 방식을 재검토. 이를 다른 유형으로 허위 선언하지 않음. [서비스 유형](https://developer.android.com/develop/background-work/services/fgs/service-types).
+- [ ] Play App Signing과 업로드 키 관리, 프로덕션 applicationId 확정, 서명된 AAB 생성. 현재 로컬 release bundle은 업로드용 서명이 없는 검증 산출물.
+- [ ] 콘텐츠 등급, 금융 기능, 앱 액세스 심사용 모의계정 안내, 지원 URL, 스크린샷, 스토어 설명, 사용자 테스트 요건 충족.
+- [ ] 실제 기기 + 모의증권 계좌 E2E: 토큰 재사용, 다중 계좌, 정상·거절·429·401, 부분체결, IOC 미체결, 통신 단절, 재시작, 암호문 손상, 시간 변경, 휴장, 강제종료, 백그라운드, 알림 권한 거절 검증.
+- [ ] 포트폴리오/체결/P&L 필드의 실제 응답 검증. 시장주문번호·통합주문번호 정합성 확보 후 주문별 체결 상태 자동 대사 구현.
+- [ ] 외부 계좌 활동/입출금 처리, point-in-time 데이터 검증, 비용 포함 표본 외 백테스트, 투자전략 품질 검토.
+- [ ] 독립 보안 검토 및 기기 암호화 instrumentation tests 수행.
+
+## 실거래 활성화 절차
+
+이 체크리스트의 증거를 `VERIFICATION.md`와 연결하고 실제 API 응답 fixture를 비식별화해서 테스트합니다. 담당자가 계정·데이터 라이선스·정책 항목을 확인한 뒤 live 환경 선택 UI, 추가 기기 인증/실거래 확인, 주문 대사를 구현해야 합니다. 현재 `NhBroker`의 운영 전송 코드는 존재하지만 기본 UI는 모의만 연결하고 실제 자금 주문을 실행하지 않습니다. 실제 주문 테스트는 별도의 명시적 사용자 지시와 한도가 있어야 합니다.
