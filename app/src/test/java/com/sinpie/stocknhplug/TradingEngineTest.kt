@@ -35,6 +35,7 @@ class TradingEngineTest {
         var sent = 0
         var fail = false
         var beforeSend: () -> Unit = {}
+        var afterAvailable: () -> Unit = {}
 
         override suspend fun accounts() = emptyList<Account>()
 
@@ -42,8 +43,15 @@ class TradingEngineTest {
 
         override suspend fun dailyPnl(account: Account) = emptyList<DailyPnl>()
 
-        override suspend fun available(account: Account, symbol: String, side: Side, price: Long) =
-            100L
+        override suspend fun available(
+            account: Account,
+            symbol: String,
+            side: Side,
+            price: Long,
+        ): Long {
+            afterAvailable()
+            return 100L
+        }
 
         override suspend fun place(account: Account, intent: OrderIntent): String {
             beforeSend()
@@ -53,6 +61,73 @@ class TradingEngineTest {
         }
 
         override suspend fun executions(account: Account, date: LocalDate) = emptyList<Execution>()
+    }
+
+    @Test
+    fun marketCloseDuringAvailabilityLookupCannotDispatchOrReserve() = runBlocking {
+        var clock = Instant.parse("2026-09-21T06:14:59Z")
+        val p = portfolio.copy(at = clock)
+        val q = quote.copy(receivedAt = clock, exchangeAt = clock)
+        val broker = FakeBroker().apply { afterAvailable = { clock = clock.plusSeconds(2) } }
+        val journal = Journal()
+        val engine = TradingEngine(broker, journal) { clock }.also { it.start(p) }
+        assertTrue(
+            runCatching { engine.submit(account, p, q, Side.BUY, "test", Strategy()) }.isFailure
+        )
+        assertEquals(0, broker.sent)
+        assertTrue(journal.records().isEmpty())
+    }
+
+    @Test
+    fun balanceExpiresWhileQuoteRemainsFreshDuringAvailabilityLookup() = runBlocking {
+        var clock = now
+        val p = portfolio.copy(at = now.minusSeconds(59))
+        val broker = FakeBroker().apply { afterAvailable = { clock = now.plusSeconds(2) } }
+        val journal = Journal()
+        val engine = TradingEngine(broker, journal) { clock }.also { it.start(p) }
+        assertTrue(
+            runCatching { engine.submit(account, p, quote, Side.BUY, "test", Strategy()) }.isFailure
+        )
+        assertEquals(0, broker.sent)
+        assertTrue(journal.records().isEmpty())
+    }
+
+    @Test
+    fun journalDelayIsRejectedBeforeNetworkWithoutClaimingBrokerOutcomeUnknown() = runBlocking {
+        var clock = now
+        val journal = Journal()
+        val slow =
+            object : OrderJournal by journal {
+                override fun reserve(intent: OrderIntent): Boolean {
+                    val saved = journal.reserve(intent)
+                    clock = clock.plusSeconds(16)
+                    return saved
+                }
+            }
+        val broker = FakeBroker()
+        val engine = TradingEngine(broker, slow) { clock }.also { it.start(portfolio) }
+        assertTrue(
+            runCatching { engine.submit(account, portfolio, quote, Side.BUY, "test", Strategy()) }
+                .isFailure
+        )
+        assertEquals(0, broker.sent)
+        assertFalse(engine.running)
+        assertEquals(OrderStatus.REJECTED, journal.records().single().status)
+    }
+
+    @Test
+    fun dispatchDeadlineRetainsOriginalQuoteExpiryAndExactFiveSeconds() = runBlocking {
+        val broker = FakeBroker()
+        val journal = Journal()
+        val engine = TradingEngine(broker, journal) { now }.also { it.start(portfolio) }
+        val aged = quote.copy(receivedAt = now.minusSeconds(14), exchangeAt = now.minusSeconds(14))
+        val result = engine.submit(account, portfolio, aged, Side.BUY, "test", Strategy())
+        assertEquals(now.plusSeconds(1), result.intent.expiresAt)
+        assertFalse(result.intent.dispatchable(now.plusSeconds(1).plusNanos(1)))
+        val normal = result.intent.copy(expiresAt = now.plusSeconds(30))
+        assertTrue(normal.dispatchable(now.plusSeconds(5)))
+        assertFalse(normal.dispatchable(now.plusSeconds(5).plusNanos(1)))
+        assertFalse(normal.dispatchable(now.minusNanos(1)))
     }
 
     @Test

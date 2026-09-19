@@ -142,9 +142,7 @@ class NhBroker(private val transport: NhTransport) : Broker {
                         "sor_mkt_sli_yn" to "N",
                     ),
                     dispatchGuard = {
-                        check(Duration.between(intent.at, Instant.now()).seconds in 0..5) {
-                            "주문 전송 유효시간 초과"
-                        }
+                        check(intent.dispatchable(Instant.now())) { "주문 전송 유효시간 초과" }
                     },
                 )
                 .single()

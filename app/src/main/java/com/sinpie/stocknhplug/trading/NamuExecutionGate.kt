@@ -78,7 +78,12 @@ class NamuExecutionGate : ExecutionGate {
 
     override fun observe(snapshot: PriceSnapshot, now: Instant) {
         val old = snapshots[snapshot.quote.symbol]
-        if (old != null && snapshot.quote.receivedAt < old.quote.receivedAt) return
+        if (
+            old != null &&
+                (snapshot.quote.receivedAt < old.quote.receivedAt ||
+                    snapshot.quote.exchangeAt < old.quote.exchangeAt)
+        )
+            return
         snapshots[snapshot.quote.symbol] = snapshot
         entries.values
             .filter { it.request.symbol == snapshot.quote.symbol }
@@ -92,7 +97,7 @@ class NamuExecutionGate : ExecutionGate {
         entry.ready = false
         if (
             !trackingSession(now) ||
-                !q.fresh(now) ||
+                !snapshot.valid(now) ||
                 !q.regular ||
                 q.bid <= 0 ||
                 q.ask < q.bid ||

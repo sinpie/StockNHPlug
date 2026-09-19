@@ -53,3 +53,5 @@ NHPlug 가격이력은 marketdata/NhPriceHistoryProvider로 이동하고 주문 
 
 ## 2026-09-20 현재가 경로 검토
 [NHPlug 공식 API](https://www.nhplug.com/apiservice)의 currentPrice는 live 전용이므로 해당 읽기 경로만 운영 8443을 사용합니다. 시세 oc도 운영 7070이며 계좌/주문은 모의입니다. 새 크롤러나 비공식 공급자를 추가하지 않았습니다. 당일 상하한과 양방향 호가를 필수로 검증합니다. 시세는 메모리 전용, 재배포하지 않습니다. NamuMagic은 사용자 소유 알고리즘 참조이며 시장 데이터 공급원/이용권한의 근거가 아닙니다. 원본 커밋과 공식 KRX 자료는 [PRICE_TRACKING.md](PRICE_TRACKING.md)에 기록했습니다.
+
+2026-09-20: 기존 NH currentPrice 제공자의 검증을 강화해 당일 제한 밖 bid/ask를 거절합니다. 수동 시세 조회도 동일 공식 API만 쓰며 신규 공급자·크롤러·원격 저장을 추가하지 않았습니다.

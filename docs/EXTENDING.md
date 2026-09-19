@@ -75,3 +75,7 @@ flowchart TD
 
 ## 가격 추적 교체
 `ExecutionGate`를 AppContainer에서 주입해 추적 전략을 교체합니다. `CurrentPriceProvider`와 `MarketStream`은 BrokerSession에서 별도 교체합니다. 어댑터는 거래소 시각·호가·당일 상하한·상품 종류·구독 ACK를 제공해야 합니다. 공통 TradingEngine/저널/연구 게이트는 교체 대상이 아닙니다.
+
+교체 시세 어댑터도 PriceSnapshot.valid의 양방향 호가/당일 가격범위 검사를 통과해야 합니다. 시세 수신시각이 증가해도 거래소 시각이 후퇴한 샘플은 상태 갱신에 쓰지 않습니다. UI Workspace는 AppState와 이벤트 콜백으로 테스트하며 구체 Broker를 참조하지 않습니다.
+
+새 Broker도 OrderIntent.dispatchable을 실제 네트워크 전송 직전에 검사해야 합니다. expiresAt을 현재 시각 기준으로 다시 계산하거나 연장하지 마세요. 이는 교체 가능한 실행 포트의 계약입니다.

@@ -57,7 +57,9 @@ class NhCurrentPriceProvider(private val transport: NhTransport) : CurrentPriceP
                 }
             val rules = MarketRules(day, row.getLong("stck_llam"), row.getLong("stck_mxpr"), kind)
             require(rules.contains(quote.price, received))
-            return PriceSnapshot(quote, rules, PriceSource.REST)
+            return PriceSnapshot(quote, rules, PriceSource.REST).also {
+                require(it.valid(received))
+            }
         }
     }
 }

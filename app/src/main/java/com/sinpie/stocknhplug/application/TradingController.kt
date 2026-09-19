@@ -88,6 +88,13 @@ class TradingController(
         mutable.value = block(mutable.value)
     }
 
+    /** 연결/설정 변경 직후 이전 가격과 가상 타겟을 비운다. 주문 저널은 수정하지 않는다. */
+    private fun resetTrackingView() {
+        monitor?.clear()
+        executionGate.clear()
+        change { it.copy(quotes = emptyMap(), tracking = emptyList(), quoteRoutes = emptyList()) }
+    }
+
     /** 통제된 앱 메시지만 저장한다. 저장 실패는 거래 잠금이며 원시 예외/HTTP 본문을 전달하지 않는다. */
     private fun log(message: String, level: String = "INFO") {
         try {
@@ -105,6 +112,7 @@ class TradingController(
         require(key.isNotBlank() && secret.isNotBlank())
         store.saveCredentials(key, secret, dart)
         socket?.close()
+        resetTrackingView()
         broker = null
         engine = null
         researchRepository = null
@@ -161,6 +169,7 @@ class TradingController(
             }
         store.saveStrategyBook(book)
         socket?.close()
+        resetTrackingView()
         change {
             it.copy(
                 book = book,
@@ -186,6 +195,7 @@ class TradingController(
         check(!state.value.running)
         store.saveSettings(settings)
         socket?.close()
+        resetTrackingView()
         change {
             it.copy(
                 settings = settings,
@@ -202,6 +212,7 @@ class TradingController(
     fun connect() = task {
         check(!state.value.running && !state.value.storageError)
         socket?.close()
+        resetTrackingView()
         change {
             it.copy(
                 connected = false,
@@ -267,6 +278,7 @@ class TradingController(
     fun select(account: Account) = task {
         check(!state.value.running && account in state.value.accounts)
         socket?.close()
+        resetTrackingView()
         change {
             it.copy(
                 connected = false,
@@ -326,6 +338,22 @@ class TradingController(
     fun refresh() = task {
         refreshInternal()
         log("잔고·주문체결 동기화 완료")
+    }
+
+    /** 정지 상태의 시세 화면에서 요청한 한 종목만 조회한다. 자동매매나 타겟을 생성하지 않는다. */
+    fun refreshPrice(symbol: String) = task {
+        check(state.value.connected)
+        val allowed =
+            configuredSymbols() + state.value.portfolio?.holdings.orEmpty().map { it.symbol }
+        require(symbol in allowed)
+        if (!trackingSession(Instant.now())) {
+            log("시세 조회 시간은 평일 09:05–15:15입니다. 지난 시세는 주문에 사용하지 않습니다.")
+            return@task
+        }
+        val prices = monitor ?: error("시세 연결 필요")
+        prices.refresh(symbol)
+        change { it.copy(quoteRoutes = prices.statuses()) }
+        log("$symbol 시세 조회 완료 · 자동매매는 정지 상태입니다.")
     }
 
     /** 계좌 전체의 증권사 손익을 조회한다. 앱의 특정 전략 성과와 구별해서 표시한다. */
@@ -456,6 +484,7 @@ class TradingController(
         val stopping = loop?.isCompleted == false
         loop?.cancel()
         socket?.close()
+        resetTrackingView()
         monitor?.clear()
         executionGate.clear()
         change {
@@ -479,6 +508,7 @@ class TradingController(
         }
         stop()
         socket?.close()
+        resetTrackingView()
         scope.coroutineContext.cancelChildren()
         store.clear()
         broker = null

@@ -133,3 +133,8 @@ API와 전략의 구체적인 교체 계약 및 의존성 방향은 [EXTENDING.m
 전략 화면 → `ParkingSettingsCard` → `ParkingEditor` → `saveBook` 순서로 설정합니다. 매매 회차는 `GroupTradingCoordinator.tick` → 자금 부족 검사 → `parkingOrder` → `ParkingPlanner.decide` → 공통 `TradingEngine.submit` 순서입니다. 체결은 기존 `reconcile` → `GroupLedger`를 통해 별도 파킹 원장으로 돌아옵니다. 접수금액을 주식 매수자금에 즉시 반영하는 경로는 없습니다. 자세한 조건은 [PARKING](PARKING.md)에 있습니다.
 
 추적 포트와 함수별 상세 흐름: [PRICE_TRACKING.md](PRICE_TRACKING.md). 파킹 매도는 실제 전략 트리거 후에만 자금 부족을 확인해 실행합니다.
+
+## 수동 시세 진입점
+StockApp → MarketWorkspace → PriceTrackingScreen 종목 조회 → TradingController.refreshPrice → HybridPriceMonitor.refresh → CurrentPriceProvider → PriceSnapshot.valid → onPrice → AppState. 자동 주문 시작과 독립적입니다. 주문은 기존 submit 경로에서 가능수량 조회 이후 및 reserve 이후 validateDispatch를 재수행합니다.
+
+submit → validateDispatch → expiresAt 포함 OrderIntent 생성 → reserve → validateDispatch/dispatchable → Broker.place → NH dispatchGuard의 dispatchable → HTTP 전송. Broker 호출 전 거절과 호출 이후 불명확 결과를 구분합니다. 연결/설정 변경 시 resetTrackingView가 가격·가상 타겟·전송 표시만 비우고 실제 저널은 유지합니다.

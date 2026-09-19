@@ -52,9 +52,11 @@ class LocalStoreInstrumentedTest {
                 10000,
                 "test",
                 Instant.parse("2026-09-21T01:00:00Z"),
+                expiresAt = Instant.parse("2026-09-21T01:00:01Z"),
             )
         assertTrue(LocalStore(vault).reserve(intent))
         val restored = LocalStore(vault)
+        assertEquals(intent.expiresAt, restored.records().single().intent.expiresAt)
         assertEquals(OrderStatus.SUBMITTING, restored.records().single().status)
         assertFalse(restored.reserve(intent))
         restored.update(intent.id, OrderStatus.UNKNOWN, "")
@@ -80,8 +82,13 @@ class LocalStoreInstrumentedTest {
         assertEquals("other", LocalStore(vault).records().single().intent.brokerId)
         val oldFormat = vault.read("journal")!!
         oldFormat.getJSONArray("orders").getJSONObject(0).remove("broker")
+        oldFormat.getJSONArray("orders").getJSONObject(0).remove("expiresAt")
         vault.write("journal", oldFormat)
         assertEquals("nhplug", LocalStore(vault).records().single().intent.brokerId)
+        assertEquals(
+            intent.at.plusSeconds(5),
+            LocalStore(vault).records().single().intent.expiresAt,
+        )
         assertEquals(OrderStatus.SUBMITTING, LocalStore(vault).records().single().status)
     }
 

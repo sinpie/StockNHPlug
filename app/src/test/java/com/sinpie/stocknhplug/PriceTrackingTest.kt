@@ -23,6 +23,38 @@ class PriceTrackingTest {
         TargetRequest(key, "005930", side, target, now.plusSeconds(1800))
 
     @Test
+    fun validLastPriceCannotHideBidAskOutsideDailyLimits() {
+        val q = sample(10000).quote.copy(bid = 999, ask = 999)
+        val s = sample(10000).copy(quote = q)
+        assertFalse(s.valid(now))
+        val gate = NamuExecutionGate()
+        gate.observe(s, now)
+        assertFalse(gate.evaluate(request().copy(deadline = now), q, now))
+        val json = response()
+        json.getJSONObject("Output_0").put("bidp", "6990").put("askp", "6990")
+        assertTrue(runCatching { NhCurrentPriceProvider.parse("005930", json, now) }.isFailure)
+    }
+
+    @Test
+    fun lateArrivalWithOlderExchangeTimeCannotMoveExtremaOrDistance() {
+        val current = sample(9000)
+        val old =
+            sample(8000, now.plusSeconds(1)).let {
+                it.copy(quote = it.quote.copy(exchangeAt = now.minusSeconds(1)))
+            }
+        val gate = NamuExecutionGate()
+        gate.observe(current, now)
+        gate.evaluate(request(), current.quote, now)
+        gate.observe(old, now.plusSeconds(1))
+        assertEquals(9000L, gate.targets().single().extreme)
+        val policy = HybridQuotePolicy()
+        policy.setTargets(mapOf("005930" to listOf(9000)), now)
+        policy.observe(current, 0.0, now)
+        assertFalse(policy.observe(old, 1.0, now.plusSeconds(1)))
+        assertEquals(setOf("005930"), policy.websocketSymbols(10))
+    }
+
+    @Test
     fun buyWaitsForReversalAndPreservesLowAcrossSources() {
         val gate = NamuExecutionGate()
         val low = sample(9000)

@@ -133,7 +133,14 @@ data class OrderIntent(
     val strategyId: String = "",
     val groupId: String = "",
     val occurrence: String = "",
-)
+    val expiresAt: Instant = at.plusSeconds(5),
+) {
+    /** 인증·호출 간격 대기 이후에도 원래 시세/잔고 유효시간을 연장하지 않는다. */
+    fun dispatchable(now: Instant) =
+        !now.isBefore(at) &&
+            !now.isAfter(minOf(expiresAt, at.plusSeconds(5))) &&
+            trackingSession(now)
+}
 
 data class OrderRecord(
     val intent: OrderIntent,

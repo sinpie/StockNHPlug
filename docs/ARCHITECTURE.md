@@ -105,10 +105,16 @@ HTTP 성공과 업무 성공을 구분합니다. 오류 문구/심각도와 응�
 
 ## 6. 화면 (`ui`, `MainActivity`)
 
-`MainActivity`는 기기 잠금 인증, FLAG_SECURE, 오버레이 숨김, 가려진 터치 차단, 알림 권한 요청을 담당합니다. 백그라운드 이동 후 재진입하면 다시 인증합니다. `StockApp`은 6개 탭과 설정 대화상자로 기능을 분리합니다. `StockTheme`, `Panel`, `Badge`, `Field`는 일관된 색상·여백·입력 형태를 제공합니다. 숫자가 없으면 0이나 예시 데이터를 만들지 않고 `—`/빈 상태를 표시합니다.
+`MainActivity`는 기기 잠금 인증, FLAG_SECURE, 오버레이 숨김, 가려진 터치 차단, 알림 권한 요청을 담당합니다. 백그라운드 이동 후 재진입하면 다시 인증합니다. `StockApp`은 5개 작업 공간과 설정 대화상자로 기능을 분리합니다. `StockTheme`, `Panel`, `Badge`, `Field`는 일관된 색상·여백·입력 형태를 제공합니다. 숫자가 없으면 0이나 예시 데이터를 만들지 않고 `—`/빈 상태를 표시합니다.
 
 ## 파킹 현금 정책 (2026-09-20)
 `StrategyBook.parking` → `ParkingSettingsCard` 편집 → `TradingController.saveBook` 암호화 저장 순서입니다. `ParkingPolicy`는 사용자 전략그룹 밖의 예약 소유권을 가지며 `ledgerGroups()`로 체결 대사·수량 검증에 포함합니다. `GroupTradingCoordinator`는 적격 전략 매수의 자금 부족 시 `ParkingPlanner`의 매도 제안을 실행하고 즉시 반환합니다. 다음 회차의 종료 체결·잔고 확인 전 주식 매수는 없습니다. 남는 현금 매수는 모든 전략 판단 뒤 수행합니다. [클래스 및 자금 흐름](PARKING.md)을 참고하세요.
 
 ## 적응형 추적 클래스 (2026-09-20)
-`AppContainer`가 `NamuExecutionGate`와 세션의 `NhCurrentPriceProvider`를 주입합니다. `ExecutionGate`는 매매 판단 포트, `CurrentPriceProvider`는 시장 데이터 포트입니다. `MarketRules`와 `PriceSnapshot`은 검증 메타데이터/출처를 소유합니다. `HybridQuotePolicy`가 거리/단조 시각을 계산하고 `HybridPriceMonitor`가 전송을 조정합니다. UI 상태는 `AppState.tracking/quoteRoutes`, 로그 화면은 읽기 전용입니다. 정지 시 가상 추적 상태를 비우며 실제 주문 저널과 분리합니다. 함수별 입출력·수식·흐름은 [PRICE_TRACKING.md](PRICE_TRACKING.md)에 상세히 기록했습니다.
+`AppContainer`가 `NamuExecutionGate`와 세션의 `NhCurrentPriceProvider`를 주입합니다. `ExecutionGate`는 매매 판단 포트, `CurrentPriceProvider`는 시장 데이터 포트입니다. `MarketRules`와 `PriceSnapshot`은 검증 메타데이터/출처를 소유합니다. `HybridQuotePolicy`가 거리/단조 시각을 계산하고 `HybridPriceMonitor`가 전송을 조정합니다. UI 상태는 `AppState.tracking/quoteRoutes`, 시세·분석 화면의 타겟은 읽기 전용입니다. 정지 시 가상 추적 상태를 비우며 실제 주문 저널과 분리합니다. 함수별 입출력·수식·흐름은 [PRICE_TRACKING.md](PRICE_TRACKING.md)에 상세히 기록했습니다.
+
+## 사용성/전송 전 재검사 (2026-09-20)
+`ui/Workspace.kt`에 WorkspaceNavigation, MarketWorkspace, AssetsWorkspace, ActivityWorkspace, PriceTrackingScreen, StatusBanner를 분리했습니다. UI는 상태와 콜백만 받으며 `StockApp`이 컨트롤러를 연결합니다. `TradingController.refreshPrice`는 설정/보유 종목과 거래시간을 확인한 뒤 `HybridPriceMonitor.refresh`로 한 종목을 조회합니다. 서비스나 주문 시작을 호출하지 않습니다.
+`PriceSnapshot.valid`는 체결가와 양방향 호가의 당일 상하한·신선도를 함께 검증합니다. monitor/gate/policy는 이전 거래소 시각 메시지로 되돌아가지 않습니다. `TradingEngine.validateDispatch`는 가능수량 조회 후와 영속 예약 후에 장중 여부·시세·잔고·정지를 재검사합니다. Broker 호출 전 검사 실패는 REJECTED/정지, Broker 호출 이후 불명확한 결과는 UNKNOWN/정지입니다.
+
+`OrderIntent.expiresAt`는 생성 후 5초, 원래 수신/거래소 시각+15초, 잔고 시각+60초 중 가장 이른 시각입니다. `dispatchable`은 미래 주문·정규시간·정확한 만료 경계를 검사합니다. NhBroker의 실제 HTTP dispatchGuard에서도 이 원래 기한을 사용해 인증/호출 대기로 수명이 늘어나지 않습니다. LocalStore는 암호화 저널에 expiresAt을 저장하며 이전 파일은 at+5초로 읽습니다. 이전/미확인 저널 재전송 기능은 추가하지 않습니다.

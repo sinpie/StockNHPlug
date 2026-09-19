@@ -23,16 +23,16 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlinx.coroutines.launch
 
-private val Teal = Color(0xFF087F70)
-private val Ink = Color(0xFF172A35)
-private val Muted = Color(0xFF596D78)
-private val Red = Color(0xFFB73E42)
-private val Blue = Color(0xFF2464BC)
+internal val Teal = Color(0xFF087F70)
+internal val Ink = Color(0xFF172A35)
+internal val Muted = Color(0xFF596D78)
+internal val Red = Color(0xFFB73E42)
+internal val Blue = Color(0xFF2464BC)
 
-private fun won(value: Long?) =
+internal fun won(value: Long?) =
     value?.let { NumberFormat.getNumberInstance(Locale.KOREA).format(it) + "원" } ?: "—"
 
-private fun time(at: Instant) =
+internal fun time(at: Instant) =
     DateTimeFormatter.ofPattern("MM.dd HH:mm:ss").withZone(SEOUL).format(at)
 
 /** 공통 색상 정의. 매매 로직이나 전역 상태를 소유하지 않는다. */
@@ -48,6 +48,10 @@ fun StockTheme(content: @Composable () -> Unit) {
                 onSurface = Ink,
                 onBackground = Ink,
                 secondary = Teal,
+                secondaryContainer = Color(0xFFDFF1EC),
+                onSecondaryContainer = Ink,
+                surfaceVariant = Color(0xFFEAF0F2),
+                onSurfaceVariant = Muted,
             ),
         content = content,
     )
@@ -88,16 +92,6 @@ fun StockApp(controller: TradingController, start: () -> Unit, stop: () -> Unit)
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var settings by remember { mutableStateOf(false) }
     var confirm by remember { mutableStateOf(false) }
-    val titles = listOf("홈", "전략", "리서치", "보유", "기록", "로그")
-    val icons =
-        listOf(
-            Icons.Outlined.Dashboard,
-            Icons.Outlined.Tune,
-            Icons.Outlined.Analytics,
-            Icons.Outlined.PieChart,
-            Icons.Outlined.ReceiptLong,
-            Icons.Outlined.Terminal,
-        )
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
@@ -117,25 +111,11 @@ fun StockApp(controller: TradingController, start: () -> Unit, stop: () -> Unit)
                 IconButton({ settings = true }) { Icon(Icons.Outlined.Settings, "보안 및 연결 설정") }
             }
         },
-        bottomBar = {
-            Surface(shadowElevation = 6.dp) {
-                Row(Modifier.fillMaxWidth().navigationBarsPadding()) {
-                    titles.forEachIndexed { i, title ->
-                        NavigationBarItem(
-                            selected = tab == i,
-                            onClick = { tab = i },
-                            icon = { Icon(icons[i], title, Modifier.size(22.dp)) },
-                            label = { Text(title, fontSize = 11.sp) },
-                            colors =
-                                NavigationBarItemDefaults.colors(indicatorColor = Color(0xFFDFF1EC)),
-                        )
-                    }
-                }
-            }
-        },
+        bottomBar = { WorkspaceNavigation(tab) { tab = it } },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth(), color = Teal)
+            StatusBanner(state.message)
             key(tab) {
                 val contentScroll = rememberScrollState()
                 val uiScope = rememberCoroutineScope()
@@ -161,19 +141,9 @@ fun StockApp(controller: TradingController, start: () -> Unit, stop: () -> Unit)
                             ) {
                                 StrategyScreen(state, controller::saveSettings)
                             }
-                        2 -> ResearchScreen(state, controller::analyze)
-                        3 -> HoldingsScreen(state, controller::refresh)
-                        4 -> HistoryScreen(state, controller::refreshPnl)
-                        5 -> LogsScreen(state)
-                    }
-                    Surface(color = Color(0xFFEAF0F2), shape = RoundedCornerShape(12.dp)) {
-                        Text(
-                            state.message,
-                            Modifier.padding(14.dp),
-                            fontSize = 12.sp,
-                            color = Muted,
-                            lineHeight = 18.sp,
-                        )
+                        2 -> MarketWorkspace(state, controller::analyze, controller::refreshPrice)
+                        3 -> AssetsWorkspace(state, controller::refresh, controller::refreshPnl)
+                        4 -> ActivityWorkspace(state)
                     }
                     Spacer(Modifier.height(12.dp))
                 }
@@ -213,7 +183,7 @@ fun StockApp(controller: TradingController, start: () -> Unit, stop: () -> Unit)
 }
 
 @Composable
-private fun Badge(text: String, color: Color = Teal) {
+internal fun Badge(text: String, color: Color = Teal) {
     Surface(color = color.copy(alpha = .10f), shape = RoundedCornerShape(6.dp)) {
         Text(
             text,
@@ -226,7 +196,7 @@ private fun Badge(text: String, color: Color = Teal) {
 }
 
 @Composable
-private fun Panel(title: String? = null, content: @Composable ColumnScope.() -> Unit) {
+internal fun Panel(title: String? = null, content: @Composable ColumnScope.() -> Unit) {
     Surface(
         shape = RoundedCornerShape(20.dp),
         color = Color.White,
@@ -240,7 +210,7 @@ private fun Panel(title: String? = null, content: @Composable ColumnScope.() -> 
 }
 
 @Composable
-private fun Heading(title: String, subtitle: String) {
+internal fun Heading(title: String, subtitle: String) {
     Column {
         Text(title, fontSize = 26.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(5.dp))
@@ -258,7 +228,7 @@ private fun Stat(label: String, value: String, color: Color = Ink) {
 }
 
 @Composable
-private fun Empty(icon: ImageVector, text: String) {
+internal fun Empty(icon: ImageVector, text: String) {
     Column(
         Modifier.fillMaxWidth().padding(vertical = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -278,6 +248,7 @@ private fun Dashboard(
     start: () -> Unit,
     stop: () -> Unit,
 ) {
+    val now = rememberDisplayTime()
     Heading(
         "투자의 흐름을 한눈에",
         LocalDate.now(SEOUL)
@@ -353,7 +324,7 @@ private fun Dashboard(
     Panel("오늘의 투자 체크") {
         CheckLine("계좌 연결", s.connected, "NHPlug 모의투자")
         CheckLine("그룹 체결 대사", s.groupExecutionReady, "주문번호 연결 검증 전 자동주문 잠금")
-        CheckLine("실시간 가격", s.quotes.values.any { it.fresh(Instant.now()) }, "오래된 시세는 주문에 사용하지 않음")
+        CheckLine("실시간 가격", s.quotes.values.any { it.fresh(now) }, "오래된 시세는 주문에 사용하지 않음")
         CheckLine(
             "매수 데이터 검증",
             s.research.any { it.buyBlockers(Instant.now()).isEmpty() },
@@ -361,7 +332,7 @@ private fun Dashboard(
         )
     }
     Panel("전략 점수 상위 종목") {
-        if (s.candidates.isEmpty()) Empty(Icons.Outlined.Analytics, "리서치에서 관심종목을 분석하세요.")
+        if (s.candidates.isEmpty()) Empty(Icons.Outlined.Analytics, "시세·분석의 매수 근거에서 분석을 시작하세요.")
         else
             s.candidates.take(3).forEach { c ->
                 Row {
@@ -474,11 +445,11 @@ private fun Field(
 
 /** 자료 출처와 차단 이유를 표시한다. 지표 점수를 매수 승인과 혼동하지 않는다. */
 @Composable
-private fun ResearchScreen(s: AppState, analyze: (String, Int, String) -> Unit) {
+internal fun ResearchScreen(s: AppState, analyze: (String, Int, String) -> Unit) {
     var mapping by rememberSaveable { mutableStateOf("") }
     var year by rememberSaveable { mutableStateOf((LocalDate.now().year - 1).toString()) }
     var code by rememberSaveable { mutableStateOf("11011") }
-    Heading("매수 전, 근거부터", "허용된 공식 API 자료로만 확인합니다.")
+    Text("허용된 공식 자료의 지표와 매수 차단 사유입니다.", color = Muted, fontSize = 12.sp)
     Panel("분석 데이터") {
         Text(
             "가격: NHPlug · 재무/공시: 금융감독원 OpenDART\n뉴스: 사용권한 확정 전 수집하지 않음",
@@ -543,8 +514,9 @@ private fun ResearchScreen(s: AppState, analyze: (String, Int, String) -> Unit) 
 
 /** 현재 잔고 스냅샷과 별도 실시간 가격을 구분해 표시한다. */
 @Composable
-private fun HoldingsScreen(s: AppState, refresh: () -> Unit) {
-    Heading("보유종목", "매입가와 현재가, 평가손익을 함께 확인하세요.")
+internal fun HoldingsScreen(s: AppState, refresh: () -> Unit) {
+    val now = rememberDisplayTime()
+    Text("계좌 잔고 기준 · 조회 시각을 확인하세요.", color = Muted, fontSize = 12.sp)
     OutlinedButton(refresh, enabled = s.connected && !s.busy) {
         Icon(Icons.Outlined.Refresh, null)
         Text(" 잔고 새로고침")
@@ -569,7 +541,11 @@ private fun HoldingsScreen(s: AppState, refresh: () -> Unit) {
                 Stat("잔고 기준 현재가", won(h.price))
             }
             s.quotes[h.symbol]?.let { q ->
-                Text("실시간 ${won(q.price)} · ${time(q.exchangeAt)}", color = Teal, fontSize = 12.sp)
+                Text(
+                    "${if (q.fresh(now)) "조회 시세" else "지난 시세 · 재조회 필요"} ${won(q.price)} · ${time(q.exchangeAt)}",
+                    color = if (q.fresh(now)) Teal else Muted,
+                    fontSize = 12.sp,
+                )
             }
         }
     }
@@ -577,17 +553,7 @@ private fun HoldingsScreen(s: AppState, refresh: () -> Unit) {
 
 /** 앱 주문, 계좌 전체 체결, 손익, 보유 이력을 각각 분리한다. */
 @Composable
-private fun HistoryScreen(s: AppState, pnl: () -> Unit) {
-    var section by rememberSaveable { mutableIntStateOf(0) }
-    Heading("기록은 투명하게", "주문 접수와 실제 체결, 손익을 구분합니다.")
-    Row(
-        Modifier.horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        listOf("앱 주문", "증권사 체결", "손익", "보유 이력").forEachIndexed { i, t ->
-            FilterChip(section == i, { section = i }, label = { Text(t) })
-        }
-    }
+internal fun HistoryScreen(s: AppState, pnl: () -> Unit, section: Int) {
     when (section) {
         0 -> {
             if (s.orders.isEmpty()) Panel { Empty(Icons.Outlined.ReceiptLong, "앱에서 보낸 주문이 없습니다.") }
@@ -720,35 +686,9 @@ private fun PnlChart(values: List<Float>) {
 
 /** 저장된 통제 메시지를 최신순으로 표시한다. 오류 필터는 원천 저널을 수정하지 않는다. */
 @Composable
-private fun LogsScreen(s: AppState) {
+internal fun LogsScreen(s: AppState) {
     var filter by rememberSaveable { mutableStateOf(false) }
-    Heading("실시간 실행 로그", "오류와 자동매매 판단을 시간순으로 확인하세요.")
-    Panel("가격 추적") {
-        if (s.tracking.isEmpty()) Text("등록된 매매 타겟이 없습니다.", color = Muted)
-        s.tracking.forEach { t ->
-            val group = s.book.groups.find { t.key.startsWith(it.id + "|") }
-            Text(
-                "${group?.name ?: "전략"} · ${t.symbol} · ${if (t.side == Side.BUY) "매수" else "매도"}",
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                "제시 ${won(t.strategyPrice)} · ${if (t.side == Side.BUY) "저점" else "고점"} ${won(t.extreme)}",
-                fontSize = 12.sp,
-            )
-            Text(
-                "트리거 ${t.trigger?.let { String.format(Locale.KOREA, "%,.1f원", it) } ?: "대기"} · ${t.message}",
-                fontSize = 12.sp,
-                color = Teal,
-            )
-        }
-        s.quoteRoutes.forEach { r ->
-            Text(
-                "${r.symbol} · ${r.mode} · 거리 ${r.distance?.let { String.format(Locale.KOREA, "%.2f%%", it) } ?: "대기"}",
-                fontSize = 12.sp,
-                color = Muted,
-            )
-        }
-    }
+    Text("앱 전체의 실행 이벤트 · 최신순", color = Muted, fontSize = 12.sp)
     FilterChip(filter, { filter = !filter }, label = { Text("오류만 보기") })
     Panel {
         val events = s.events.filter { !filter || it.level == "ERROR" }

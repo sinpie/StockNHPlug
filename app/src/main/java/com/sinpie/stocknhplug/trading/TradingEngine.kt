@@ -80,7 +80,7 @@ class TradingEngine(
             ) {
                 "자동매매 운영시간은 평일 09:05~15:15입니다."
             }
-            check(quote.regular && quote.fresh(instant)) { "정규장 실시간 시세를 기다립니다." }
+            check(quote.price > 0 && quote.regular && quote.fresh(instant)) { "정규장 실시간 시세를 기다립니다." }
             check(
                 !portfolio.at.isAfter(instant) &&
                     Duration.between(portfolio.at, instant) <= Duration.ofSeconds(60)
@@ -174,7 +174,9 @@ class TradingEngine(
                 )
             val qty = min(min(requested, available), allocation?.quantity ?: Long.MAX_VALUE)
             check(qty > 0) { "주문 가능한 수량이 없습니다." }
-            check(running && quote.fresh(now())) { "정지 요청 또는 시세 지연으로 주문을 막았습니다." }
+            // 가능수량 조회 중 장 마감/잔고 만료가 발생할 수 있다. 영속 예약 직전에 다시 검사한다.
+            validateDispatch(quote, portfolio)
+            val created = now()
             val intent =
                 OrderIntent(
                     UUID.randomUUID().toString(),
@@ -185,15 +187,29 @@ class TradingEngine(
                     qty,
                     price,
                     reason,
-                    now(),
+                    created,
                     broker.id,
                     allocation?.strategyId ?: "",
                     allocation?.groupId ?: "",
                     allocation?.occurrence ?: "",
+                    minOf(
+                        created.plusSeconds(5),
+                        quote.receivedAt.plusSeconds(15),
+                        quote.exchangeAt.plusSeconds(15),
+                        portfolio.at.plusSeconds(60),
+                    ),
                 )
             check(journal.reserve(intent)) { "주문 기록 저장 실패" }
+            // 아직 Broker.place를 호출하지 않은 거절은 미전송으로 기록한다. 저장 실패 시 SUBMITTING을 보존한다.
             try {
-                check(running) { "주문 정지" }
+                validateDispatch(quote, portfolio)
+                check(intent.dispatchable(now()))
+            } catch (_: Exception) {
+                stop()
+                journal.update(intent.id, OrderStatus.REJECTED)
+                throw IllegalStateException("전송 전 검사 실패 · 주문을 보내지 않고 정지했습니다.")
+            }
+            try {
                 val number = broker.place(account, intent)
                 check(number.isNotBlank())
                 journal.update(intent.id, OrderStatus.ACCEPTED, number)
@@ -206,4 +222,17 @@ class TradingEngine(
                 throw IllegalStateException("주문 결과 미확인: 자동매매를 정지했습니다. 재주문하지 말고 증권사 내역을 확인하세요.")
             }
         }
+
+    private fun validateDispatch(quote: Quote, portfolio: Portfolio) {
+        val instant = now()
+        check(
+            running &&
+                trackingSession(instant) &&
+                quote.fresh(instant) &&
+                !portfolio.at.isAfter(instant) &&
+                Duration.between(portfolio.at, instant) <= Duration.ofSeconds(60)
+        ) {
+            "정지·장 마감 또는 시세/잔고 지연으로 주문을 막았습니다."
+        }
+    }
 }

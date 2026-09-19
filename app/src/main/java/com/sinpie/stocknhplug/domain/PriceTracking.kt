@@ -27,7 +27,14 @@ data class MarketRules(
             price in lower..upper
 }
 
-data class PriceSnapshot(val quote: Quote, val rules: MarketRules, val source: PriceSource)
+data class PriceSnapshot(val quote: Quote, val rules: MarketRules, val source: PriceSource) {
+    /** 체결가뿐 아니라 실제 주문에 쓰는 양방향 호가도 당일 제한 범위에 있어야 한다. */
+    fun valid(now: Instant) =
+        quote.fresh(now) &&
+            quote.bid > 0 &&
+            quote.ask >= quote.bid &&
+            listOf(quote.price, quote.bid, quote.ask).all { rules.contains(it, now) }
+}
 
 /** 가격 조회는 주문 Broker와 분리한다. 구현체만 인증/REST 필드/시세 서버를 안다. */
 fun interface CurrentPriceProvider {

@@ -33,9 +33,13 @@ class HybridPriceMonitor(
     private fun accept(snapshot: PriceSnapshot) {
         val now = clock()
         val q = snapshot.quote
-        if (!q.fresh(now) || !snapshot.rules.contains(q.price, now)) return
+        if (!snapshot.valid(now)) return
         val old = latest[q.symbol]
-        if (old != null && old.quote.receivedAt > q.receivedAt) return
+        if (
+            old != null &&
+                (old.quote.receivedAt > q.receivedAt || old.quote.exchangeAt > q.exchangeAt)
+        )
+            return
         latest[q.symbol] = snapshot
         policy.observe(snapshot, monotonic(), now)
         gate.observe(snapshot, now)
@@ -78,15 +82,7 @@ class HybridPriceMonitor(
         val due = policy.claim(monotonic())
         if (due != null) {
             try {
-                val result = provider.current(due)
-                require(result.quote.symbol == due && result.source == PriceSource.REST)
-                require(
-                    result.quote.fresh(clock()) &&
-                        result.rules.contains(result.quote.price, clock())
-                )
-                metadata[due] = result.rules
-                // 전송 중 들어온 더 최신 WS 샘플의 가격을 REST 응답으로 되돌리지 않는다.
-                accept(result)
+                refresh(due)
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
@@ -103,11 +99,26 @@ class HybridPriceMonitor(
 
     fun statuses() = policy.statuses(active, stream.acknowledged(), clock())
 
+    /** 명시적인 화면 조회도 자동 감시와 같은 검증 경로를 통과한다. 주문을 시작하지 않는다. */
+    suspend fun refresh(symbol: String) {
+        check(trackingSession(clock()))
+        val result = provider.current(symbol)
+        require(
+            result.quote.symbol == symbol &&
+                result.source == PriceSource.REST &&
+                result.valid(clock())
+        )
+        metadata[symbol] = result.rules
+        accept(result)
+    }
+
     fun clear() {
         policy.clear()
         metadata.clear()
         latest.clear()
         modes = emptyMap()
         active = emptySet()
+        reconnectAt = monotonic() + 30
+        reconnectDelay = 30.0
     }
 }

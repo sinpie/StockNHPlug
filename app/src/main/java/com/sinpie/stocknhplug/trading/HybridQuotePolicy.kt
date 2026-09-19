@@ -60,6 +60,7 @@ class HybridQuotePolicy {
         val r = routes[sample.quote.symbol] ?: return false
         if (r.sample == sample) return !r.suspended
         if (r.sample?.quote?.receivedAt?.isAfter(sample.quote.receivedAt) == true) return false
+        if (r.sample?.quote?.exchangeAt?.isAfter(sample.quote.exchangeAt) == true) return false
         val previousDistance = r.distance
         if (!classify(r, sample, now)) {
             failed(sample.quote.symbol, monotonic)

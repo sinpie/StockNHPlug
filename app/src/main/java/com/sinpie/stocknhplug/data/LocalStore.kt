@@ -30,6 +30,8 @@ class LocalStore(private val vault: SecureVault) : OrderJournal {
                             j.optString("strategy", ""),
                             j.optString("group", ""),
                             j.optString("occurrence", ""),
+                            if (j.has("expiresAt")) Instant.parse(j.getString("expiresAt"))
+                            else Instant.parse(j.getString("at")).plusSeconds(5),
                         ),
                         OrderStatus.valueOf(j.getString("status")),
                         j.optString("number"),
@@ -122,6 +124,7 @@ class LocalStore(private val vault: SecureVault) : OrderJournal {
                                 .put("price", i.limitPrice)
                                 .put("reason", i.reason)
                                 .put("at", i.at.toString())
+                                .put("expiresAt", i.expiresAt.toString())
                                 .put("status", r.status.name)
                                 .put("number", r.brokerNumber)
                         }
