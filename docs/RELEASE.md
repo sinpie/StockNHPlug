@@ -1,5 +1,9 @@
 # Google Play 출시 게이트
 
+## 테스트 배포와 정식 출시 구분
+
+`-PpreviewRelease=true`로 별도 `.preview` ID의 최적화 Release APK를 만들고 전용 로컬 테스트 키로 서명할 수 있습니다. Debug APK와 함께 서명/해시를 검증하는 절차는 [TESTING.md](TESTING.md)를 따릅니다. Preview는 정식 Play 앱 서명·업로드 키를 사용하지 않으며 주문 잠금을 해제하지 않습니다. 미완료 기능을 숨긴 정식 릴리즈로 공개하지 않습니다. APK 공개 여부와 기기 실행 증거는 [VERIFICATION.md](VERIFICATION.md)에 기록합니다.
+
 검토일 2026-09-19. 기술적 빌드 성공과 스토어 승인·금융업 허용은 별개입니다. 현재는 검증용 0.1.0이며 아래 미완료 항목이 남아 있습니다.
 
 ## 반영한 사항

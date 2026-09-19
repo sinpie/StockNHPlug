@@ -1,5 +1,11 @@
 # 변경 이력
 
+## 2026-09-20 · 테스트 배포 준비
+
+- Release 최적화 테스트본에 `.preview` ID/Preview 이름을 적용하는 명시적 빌드 속성 추가. Debug 이름도 구분합니다. 실제 주문 잠금은 유지합니다.
+- 외부 테스트 keystore 서명, APK ID/디버그 여부/서명 검사, SHA-256 생성 스크립트와 테스트 안내 추가.
+- 키 입력 위치와 지원 키(NHPlug·OpenDART), 자동주문·데이터 이용권한의 미완료 범위를 명시했습니다. 공개 여부와 실제 검증 결과는 VERIFICATION.md를 따릅니다.
+
 - 2026-09-20: 파킹 구현 `ccb5be3`의 원격 CI [35451470436](https://github.com/sinpie/StockNHPlug/actions/runs/35451470436) 성공 기록 추가. 실제 NH 계좌/파킹 체결 검증은 미실행입니다.
 
 - 2026-09-20: 파킹 변경 로컬 검증은 JVM 63개/Android 10개, 린트·APK/AAB·계층/출처 검사 통과. 최초 병행 실행의 Android 입력 timeout과 단독 재실행 결과를 VERIFICATION에 구분해 기록했습니다.

@@ -1,5 +1,9 @@
 # 계층과 클래스 상세
 
+## 빌드·테스트 배포 책임
+
+`app/build.gradle.kts`의 `previewRelease` 속성은 release 변형의 ID/표시 이름만 테스트용으로 격리합니다. 응용·매매·실행 계층과 실거래 잠금은 그대로입니다. `scripts/package_test_apks.py.main`은 이미 빌드된 APK를 검사 → 외부 테스트 keystore로 서명 → 서명 검증 → SHA-256/검증 JSON 생성 순서로 처리합니다. 키 생성·Gradle 실행·GitHub 업로드는 수행하지 않습니다. 설치/키 입력/제한은 [TESTING.md](TESTING.md)에 정리합니다.
+
 기준: 2026-09-19 / Kotlin / Android 26 이상, target 36.
 
 진입점부터 함수 호출을 따라가는 설명과 흐름도는 [CODE_FLOW.md](CODE_FLOW.md)를 참조합니다.

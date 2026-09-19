@@ -1,0 +1,45 @@
+# 테스트 배포 안내
+
+현재 전체 자동매매가 완료된 제품이 아닙니다. 실제 NH 계좌의 그룹 주문·체결 대사, 수정주가 검증 및 뉴스 이용권한이 준비되지 않아 자동주문을 잠가 두었습니다. 배포본 준비는 공개 완료 또는 Play 출시 승인을 의미하지 않습니다. 공개 여부는 GitHub Releases와 VERIFICATION.md를 확인하세요.
+
+## APK 선택과 설치
+
+- `…-release.apk`: release 빌드 유형의 R8 최적화·비디버그 테스트 배포본. **StockNHPlug Preview**, applicationId `com.sinpie.stocknhplug.preview`. 일반 사용성 확인용입니다.
+- `…-debug.apk`: 디버깅 가능한 **StockNHPlug Debug**, applicationId `com.sinpie.stocknhplug.debug`. 개발자 테스트용입니다.
+- 두 앱은 저장 공간과 기기 Keystore가 별개여서 키·설정이 공유되지 않습니다. 정식 패키지 `com.sinpie.stocknhplug`와도 구분합니다.
+- Android 8 이상, 기기 PIN/패턴/비밀번호가 필요합니다. 설치 허용은 다운로드에 사용한 앱에만 필요합니다. 접근성·연락처·SMS·전체 저장소 권한은 필요하지 않습니다.
+- SHA256SUMS.txt와 APK 해시를 비교합니다. 동일 패키지 업데이트는 기존 서명과 호환되어야 합니다. 서명이 다르다고 실제 사용자의 앱 데이터를 삭제해서는 안 됩니다.
+
+## 키 설정과 확인 순서
+
+1. 기기 잠금을 설정하고 앱을 열어 기기 인증을 통과합니다.
+2. 상단 설정 → **연결 및 보안**에서 NHPlug 앱키·secret, 필요하면 OpenDART API 키를 입력하고 저장합니다. NH 모의투자에 맞는 발급 키를 사용합니다. 시세 조회는 운영 시세 API를 사용하므로 해당 권한도 확인합니다.
+3. 키는 휴대폰 내부 Keystore 기반 암호화 파일에 보관하고 공식 발급 API 인증에만 전송합니다. 키를 GitHub나 개발자에게 보내지 마세요. 저장 후 입력란은 비워집니다.
+4. 홈 → 자동매매 → 시세·분석 → 자산 → 활동을 확인합니다. 키 변경 후 재연결하고 API 인증/계좌/조회는 자신의 권한으로 확인합니다. 로컬 검증은 실제 계좌 조회 성공을 의미하지 않습니다.
+5. 전략·그룹·종목, 추천 조건, 정기매수, 파킹 설정을 편집하고 재실행 후 저장 여부를 확인합니다. 같은 종목이라도 그룹별 설정을 구분합니다.
+6. 장중 연결 상태에서 설정/보유 종목의 시세를 수동 조회합니다. 조회만으로 주문을 만들지 않습니다. 계좌 자료가 없으면 보유·손익·체결을 샘플로 채우지 않습니다.
+7. 앱 재진입 시 재인증을 확인합니다. 오류 보고에는 키·토큰·계좌번호를 포함하지 않습니다.
+
+현재 뉴스 공급자 키 입력란은 없습니다. 이용권한이 검증된 계약·어댑터가 먼저 필요합니다. OpenDART 키만으로 뉴스/수정주가 조건을 충족하지 않습니다.
+
+## 검증 범위
+
+| 범위 | 상태 |
+|---|---|
+| 화면 이동·검색·필터·전략/그룹/파킹 설정 | 자동 UI 테스트와 에뮬레이터 검증 대상 |
+| 암호화 저장·저널·전략 계산·추적 경계 | JVM/Android 테스트. 실제 결과는 VERIFICATION 참조 |
+| NH 인증·계좌·시세·OpenDART 조회 | 어댑터 구현, 유효한 키/권한으로 별도 통합 검증 필요 |
+| 그룹 자동매매·정기매수·파킹 자동주문 | 실제 체결 대사 어댑터/근거 미완료로 시작 차단 |
+| 실제 주문·체결·실현손익 정확성 | 실제 NH 계좌 시험 미실행 |
+| 무중단 실행·Play 출시 | OS 제한/심사/계약 등 출시 게이트 미완료 |
+
+## 개발자 패키징
+
+1. `./gradlew testDebugUnitTest lintDebug assembleDebug bundleRelease assembleRelease -PpreviewRelease=true` 실행. 주문 잠금은 이 속성과 무관하게 유지됩니다.
+2. 저장소 밖의 별도 테스트 keystore와 별칭을 준비합니다. 정식 Play 서명 키를 사용하지 않습니다.
+3. JAVA_HOME, STOCKNHPLUG_TEST_STORE_PASSWORD, STOCKNHPLUG_TEST_KEY_PASSWORD 환경 변수를 로컬 보안 수단으로 설정합니다. 비밀번호를 명령행 인자나 로그에 넣지 않습니다.
+4. `python scripts/package_test_apks.py --keystore <외부 경로> --alias <별칭> --build-tools <SDK build-tools 경로> --output <새 출력 경로>` 실행. 패키지 ID/디버그 여부/서명을 검사하고 해시·검증 JSON을 생성합니다. 기존 산출물 덮어쓰기는 거절합니다.
+5. disposable 기기에 Release APK를 설치해 시작/인증을 확인하고 Android 테스트를 별도로 실행합니다. debug 계측 테스트만으로 R8 실행 전체가 검증되지는 않습니다.
+6. 검증 결과와 제한을 기록한 뒤 해당 범위의 배포 조건이 충족될 때만 GitHub 프리릴리즈에 APK 2개, SHA256SUMS.txt, APK-VERIFICATION.json을 첨부합니다. keystore/비밀번호/API 데이터는 첨부하지 않습니다.
+
+속성을 생략하면 원래 production ID의 서명되지 않은 release 산출물을 생성합니다. Preview AAB는 Play 제출용이 아닙니다. 정식 서명·버전 정책은 RELEASE.md의 별도 게이트입니다.

@@ -33,6 +33,8 @@ flowchart TB
 
 ## 문서
 
+- [테스트 APK 설치·키 설정·검증 범위](docs/TESTING.md)
+
 - [물타기·리밸런싱·전략 그룹·정기매수](docs/GROUP_STRATEGIES.md)
 
 - [API·데이터·전략 교체 안내](docs/EXTENDING.md)

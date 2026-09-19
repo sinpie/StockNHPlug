@@ -1,5 +1,11 @@
 # 보안 설계
 
+## 테스트 APK 서명과 격리
+
+`previewRelease=true`는 release 빌드에 `.preview` ID와 Preview 앱 이름을 적용합니다. Debug는 `.debug` ID와 Debug 이름을 사용합니다. API 키/Keystore/데이터는 UID별로 격리됩니다. Preview도 실거래 잠금을 유지합니다.
+
+`scripts/package_test_apks.py`는 저장소 밖의 테스트 keystore만 받고 비밀번호는 환경 변수 이름을 통해 서명 도구에 전달합니다. production ID 또는 예상과 다른 debuggable APK는 거절하며 서명 검증·SHA-256을 남깁니다. 테스트 서명은 Play 정식 서명을 대체하지 않습니다. 업데이트의 서명 연속성은 [Android 공식 문서](https://developer.android.com/studio/publish/app-signing)를 따릅니다.
+
 ## 보호 대상 및 위협
 
 인증키/secret/토큰, 계좌번호, 주문 내역과 로그가 대상입니다. 악성 오버레이, 화면 캡처, 외부 앱의 intent 호출, 백업/기기 이전 유출, HTTP 로그 노출, 중간자 공격, 중복 주문과 암호문 손상을 방어합니다. 루팅된 OS·악성 키보드·기기 인증을 통과한 공격자·물리적 완전 탈취에 대한 절대 보호는 보장하지 않습니다.

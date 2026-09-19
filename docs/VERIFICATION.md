@@ -1,5 +1,18 @@
 # 검증 결과
 
+## 2026-09-20 · APK 테스트 배포 준비
+
+- `testDebugUnitTest lintDebug assembleDebug bundleRelease assembleRelease -PpreviewRelease=true`: 성공. JVM 82개 실패 0, 린트 오류 0/기존 버전 관련 경고 12개. Release는 R8 최적화이며 주문 잠금 유지.
+- 속성을 생략한 `bundleRelease assembleRelease`도 별도 성공했습니다. 기본 production ID 산출물은 서명되지 않았고 배포하지 않습니다.
+- API 30 disposable 에뮬레이터에서 `connectedDebugAndroidTest -PpreviewRelease=true`: 12개, 실패/건너뜀 0.
+- 서명 후 apksigner 검증: Preview Release v2/v3, Debug v2 성공. aapt로 각각 `.preview`/비디버그와 `.debug`/디버그를 확인했습니다.
+- 실제 서명된 Preview Release 설치 성공. MainActivity cold start, 시스템 PIN 인증 후 홈 진입, 자동매매/시세·분석/자산/활동/연결 및 보안 화면, Home 이동 후 재진입 잠금 확인. 실제 API 키를 입력하거나 주문하지 않았습니다. 초기 테스트는 Home 전환 완료 전 즉시 앱을 다시 열어 잠금 단언에 실패했고, launcher 전환을 확인한 뒤 다시 실행해 통과했습니다. 이 결과는 onStop 이후 재잠금 검증입니다.
+- Release SHA-256: `0feb91bdf5d16f3745f0ff23e199349cd9f0bf681beb00f0519c0363045cd8db` (1,513,436 bytes).
+- Debug SHA-256: `45b34b136715c836d45b935d005ee74e28798baa8c2341e8c6e33923f0cf1eba` (15,635,833 bytes).
+- Preview 서명 인증서 SHA-256: `ca2957b33c5915bf98a3f947cfa2fa52c8868720db1838615447fb8d9ee3ad6b`. 전용 테스트 private key는 저장소 밖 Windows 사용자 전용 ACL 디렉터리에 있고 비밀번호는 사용자 DPAPI로 보호합니다. 키/비밀번호는 저장소·APK·GitHub에 포함하지 않습니다.
+- 출처 허용 목록·계층 경계·Markdown 링크 검사 통과. 실제 NH 계좌·장시간 실행·뉴스 계약·수정주가·그룹 체결 대사 및 Play 심사는 미검증입니다.
+- 로컬 산출물: `artifacts/v0.1.0-preview.1/`. 현재 공개 릴리즈는 보류합니다. 전체 기능 완료 후 발행이라는 요청 조건이 아직 충족되지 않아, 자동주문 잠금을 유지한 제한적 프리릴리즈 공개 범위에 대한 사용자 답변을 기다립니다.
+
 기준일: 2026-09-19. 결과는 실행한 범위만 기록하며 버그 없음·출시 가능·전략 수익성을 의미하지 않습니다.
 
 ## 환경

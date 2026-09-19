@@ -1,4 +1,7 @@
 plugins { id("com.android.application"); id("org.jetbrains.kotlin.android") }
+// Test distribution uses the actual optimized release build, with an isolated UID/storage.
+// This property never enables orders or supplies a production signing identity.
+val previewRelease = providers.gradleProperty("previewRelease").orNull == "true"
 android {
     namespace = "com.sinpie.stocknhplug"
     compileSdk = 36
@@ -11,10 +14,23 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Enable only after the release gates in docs/RELEASE.md have been completed.
         buildConfigField("boolean", "LIVE_TRADING_ENABLED", "false")
+        manifestPlaceholders["appLabel"] = "StockNHPlug"
     }
     buildTypes {
-        debug { applicationIdSuffix = ".debug" }
-        release { isMinifyEnabled = true; proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro") }
+        debug {
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+            manifestPlaceholders["appLabel"] = "StockNHPlug Debug"
+        }
+        release {
+            isMinifyEnabled = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            if (previewRelease) {
+                applicationIdSuffix = ".preview"
+                versionNameSuffix = "-preview.1"
+                manifestPlaceholders["appLabel"] = "StockNHPlug Preview"
+            }
+        }
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
