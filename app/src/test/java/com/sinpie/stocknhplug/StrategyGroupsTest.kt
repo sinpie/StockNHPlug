@@ -270,16 +270,19 @@ class StrategyGroupsTest {
         val q = Quote("005930", 9500, 9500, 9510, now, now, true)
         val p = GroupPosition("005930", 10, 100000, 0, 1)
         val context = GroupContext(group("g1"), listOf(p), mapOf(q.symbol to q), 100000)
-        assertEquals(Side.BUY, AveragingDownAlgorithm().decide(context).single().side)
+        assertEquals(
+            9700L,
+            AveragingDownAlgorithm().decide(context).single { it.side == Side.BUY }.targetPrice,
+        )
         assertTrue(
             AveragingDownAlgorithm()
                 .decide(context.copy(positions = listOf(p.copy(buys = 4))))
-                .isEmpty()
+                .none { it.side == Side.BUY }
         )
         assertTrue(
             AveragingDownAlgorithm()
                 .decide(context.copy(positions = listOf(p.copy(cost = 90000))))
-                .isEmpty()
+                .any { it.side == Side.BUY && it.targetPrice == 8730L }
         )
     }
 

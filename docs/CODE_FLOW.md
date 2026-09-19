@@ -61,7 +61,7 @@ sequenceDiagram
     W-->>C: quote 콜백 → Main dispatcher → AppState.quotes
 ```
 
-`connected`는 초기 조회와 소켓 연결 요청 완료를 뜻합니다. WebSocket 구독 승인이나 새 시세 수신을 보증하지 않으며, 주문 시 `Quote.fresh`를 다시 검사합니다. `select`도 이전 가격·손익을 지우고 잔고 조회 및 구독을 다시 수행합니다. 보유종목과 관심종목 합집합이 10개를 넘으면 연결을 실패로 처리해 일부 보유종목이 관리에서 조용히 빠지는 일을 막습니다.
+`connected`는 초기 조회와 소켓 연결 요청 완료를 뜻합니다. WebSocket 구독 승인이나 새 시세 수신을 보증하지 않으며, 주문 시 `Quote.fresh`를 다시 검사합니다. `select`도 이전 가격·손익을 지우고 잔고 조회 및 구독을 다시 수행합니다. 보유종목과 설정종목 합집합이 앱 한도 100개를 넘으면 연결을 실패로 처리해 일부 보유종목이 관리에서 조용히 빠지는 일을 막습니다.
 
 `saveCredentials`는 기존 토큰·브로커·엔진·계좌·분석 결과를 무효화합니다. `saveSettings`는 입력 검증/저장 후 구독을 닫으며 다시 연결해야 합니다. 키 교체나 계좌 전환은 실행 중 허용하지 않습니다.
 
@@ -73,7 +73,7 @@ sequenceDiagram
 
 ## 자동매매 반복과 주문 상태
 
-`startSession`은 연결·작업 상태·저장소·보유관리 동의 또는 매수 근거·미확인 주문을 검사합니다. `TradingEngine.start`가 세션 기준 순자산과 추적 고점을 초기화하며 실행 중 재호출은 거절합니다. 이후 사용자 정지 또는 안전 오류까지 잔고/체결 조회 → 그룹 전략 평가 → 15초 대기 순서로 동작합니다. 앱 자체의 6시간 만료는 제거했습니다.
+`startSession`은 연결·작업 상태·저장소·보유관리 동의 또는 매수 근거·미확인 주문을 검사합니다. `TradingEngine.start`가 세션 기준 순자산과 추적 고점을 초기화하며 실행 중 재호출은 거절합니다. 이후 사용자 정지 또는 안전 오류까지 잔고/체결 약 15초 갱신 → HybridPriceMonitor.step → 그룹 전략/ExecutionGate 평가 → 1초 대기 순서로 동작합니다. 앱 자체의 6시간 만료는 제거했습니다.
 
 ```mermaid
 flowchart TD
@@ -101,7 +101,7 @@ flowchart TD
 | 경계 | 실행 위치 및 책임 |
 |---|---|
 | Compose 액션, 컨트롤러 상태 변경 | Main dispatcher. `task`가 중복 액션을 막으며 자동매매 중 수동 조회/설정 액션은 받지 않음 |
-| 15초 매매 loop | Main scope의 suspend 작업. 네트워크는 전송기 내부 IO로 전환 |
+| 1초 추적 loop / 15초 계좌 대사 | Main scope의 suspend 작업. 네트워크는 전송기 내부 IO로 전환 |
 | OkHttp WebSocket 콜백 | 컨트롤러가 `scope.launch`로 Main에 전달. 소켓 generation으로 닫힌 연결의 콜백을 배제 |
 | REST 요청 | `NhTransport`의 IO 및 호출 간격 Mutex. 리다이렉트/연결 자동 재시도 없음 |
 | 주문 직렬화 | `TradingEngine`의 Mutex. 단일 주문 저널 예약과 전송 순서를 유지 |
@@ -131,3 +131,5 @@ API와 전략의 구체적인 교체 계약 및 의존성 방향은 [EXTENDING.m
 
 ## 파킹 진입점
 전략 화면 → `ParkingSettingsCard` → `ParkingEditor` → `saveBook` 순서로 설정합니다. 매매 회차는 `GroupTradingCoordinator.tick` → 자금 부족 검사 → `parkingOrder` → `ParkingPlanner.decide` → 공통 `TradingEngine.submit` 순서입니다. 체결은 기존 `reconcile` → `GroupLedger`를 통해 별도 파킹 원장으로 돌아옵니다. 접수금액을 주식 매수자금에 즉시 반영하는 경로는 없습니다. 자세한 조건은 [PARKING](PARKING.md)에 있습니다.
+
+추적 포트와 함수별 상세 흐름: [PRICE_TRACKING.md](PRICE_TRACKING.md). 파킹 매도는 실제 전략 트리거 후에만 자금 부족을 확인해 실행합니다.

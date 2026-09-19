@@ -8,6 +8,14 @@ Windows, Android Studio JBR, Gradle 8.13, AGP 8.12.2, Kotlin 1.9.0, Android SDK 
 
 ## 실행 결과
 
+### NamuMagic 가격 추적 (2026-09-20)
+
+가격 추적 JVM 회귀 및 통합 테스트를 추가했습니다. 실제 NamuExecutionGate를 사용해 가상 매수 등록/저점만으로 파킹을 팔지 않고 반전 후 매도, 종료 체결 및 현금 갱신 후에만 주식을 매수함을 검증했습니다. ACK 전/당일 메타데이터 전 WS 거절, 단절 시 REST 복귀와 극값 보존, 10% 경계·현재가 분모, 오래된/동일 캐시의 기한 불변, 가격범위 중단, 틱 경계, 매수/매도 반전, 만료 시 불리한/낡은 가격 차단을 포함합니다.
+
+JVM 76개 통과(실패/오류 0). 실제 NH 현재가 응답·WS ACK·상품 종류·원본 전략 성과·장시간 기기 운용은 미검증이며 합성 테스트를 실제 주문 검증으로 표시하지 않습니다. 출시/그룹 체결 대사 잠금은 유지합니다. 아래 과거 결과는 각 변경 당시 기록입니다.
+
+최종 `testDebugUnitTest lintDebug assembleDebug bundleRelease` 성공, 린트 오류 0/기존 의존성 버전 경고 12개. 빌드 후 별도 실행한 `connectedDebugAndroidTest`도 폐기 가능한 API 30 에뮬레이터에서 10개 모두 통과했습니다. 기존 Keystore/암호화 저장/전략·파킹 UI 회귀이며 새 로그 추적 카드의 실제 장중 화면 검증은 포함하지 않습니다. 출처·계층·Markdown 링크 검사와 `git diff --check` 통과. 실제 사용자 데이터 삭제나 증권사 주문은 수행하지 않았습니다.
+
 ### 파킹 설정·자금 순환 (2026-09-20)
 
 구현 커밋 `ccb5be31dd91f5982adb35e2c89e026f37f1da51`의 [GitHub Actions 35451470436](https://github.com/sinpie/StockNHPlug/actions/runs/35451470436)이 성공했습니다. 원격 Ubuntu/JDK 17에서 단위 테스트·린트·APK/AAB·출처·계층 검사가 통과했습니다. Android 10개는 아래 로컬 기기 테스트 결과입니다. Actions 런타임/버전 폐기 예정 경고는 남아 있습니다. 이 기록만 추가한 문서 커밋은 CI를 재실행하지 않습니다.

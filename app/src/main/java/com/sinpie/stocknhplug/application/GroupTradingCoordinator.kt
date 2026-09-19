@@ -11,6 +11,7 @@ class GroupTradingCoordinator(
     private val source: GroupExecutionSource?,
     private val registry: GroupAlgorithmRegistry,
     private val engine: TradingEngine,
+    private val executionGate: ExecutionGate,
 ) {
     suspend fun reconcile(account: Account) {
         val provider = source ?: return
@@ -53,13 +54,34 @@ class GroupTradingCoordinator(
                 .flatMap { it.symbols }
                 .any { item ->
                     quotes[item.symbol]?.let {
-                        it.regular && it.fresh(now) && it.bid > 0 && it.ask >= it.bid
+                        it.price > 0 &&
+                            it.bid > 0 &&
+                            it.ask >= it.bid &&
+                            !it.receivedAt.isAfter(now) &&
+                            java.time.Duration.between(it.receivedAt, now).seconds <= 300
                     } != true
                 }
         )
             return null
         val allPositions =
             book.ledgerGroups().flatMap { GroupLedger.positions(it, account, orders, fills) }
+        val todayDate = now.atZone(SEOUL).toLocalDate()
+        executionGate.retain(
+            executionGate
+                .targets()
+                .filter { target ->
+                    enabled.any { target.key.startsWith(it.id + "|") } &&
+                        target.key.endsWith("|$todayDate") &&
+                        GroupLedger.ordersFor(account, orders).none {
+                            it.intent.groupId == target.key.substringBefore('|') &&
+                                it.intent.symbol == target.symbol &&
+                                it.intent.side == target.side &&
+                                it.intent.at.atZone(SEOUL).toLocalDate() == todayDate
+                        }
+                }
+                .map { it.key }
+                .toSet()
+        )
         // 계좌 외부 매도가 있으면 특정 그룹의 주식을 다른 그룹 소유로 간주하지 않는다.
         allPositions
             .groupBy { it.symbol }
@@ -78,7 +100,11 @@ class GroupTradingCoordinator(
             check(cash >= 0)
             val validQuotes =
                 quotes.filterValues {
-                    it.fresh(now) && it.regular && it.bid > 0 && it.ask >= it.bid && it.price > 0
+                    !it.receivedAt.isAfter(now) &&
+                        java.time.Duration.between(it.receivedAt, now).seconds <= 300 &&
+                        it.bid > 0 &&
+                        it.ask >= it.bid &&
+                        it.price > 0
                 }
             if (group.symbols.any { it.symbol !in validQuotes }) continue
             val context = GroupContext(group, positions, validQuotes, cash)
@@ -167,10 +193,29 @@ class GroupTradingCoordinator(
                 val availableCash = minOf(cash, (group.dailyBudget - spent).coerceAtLeast(0))
                 if (
                     decision.side == Side.BUY &&
-                        availableCash < validQuotes.getValue(decision.symbol).ask * 1.01
+                        availableCash <
+                            (decision.targetPrice ?: validQuotes.getValue(decision.symbol).ask) *
+                                1.01
                 )
                     continue
                 val owned = positions.find { it.symbol == decision.symbol }?.quantity ?: 0
+                val quote = validQuotes.getValue(decision.symbol)
+                val key =
+                    "${group.id}|${decision.symbol}|${decision.side}|${decision.occurrence}|$todayDate"
+                val target =
+                    decision.targetPrice
+                        ?: executionGate.targets().find { it.key == key }?.strategyPrice
+                        ?: (if (decision.side == Side.BUY) quote.ask else quote.bid)
+                val close = todayDate.atTime(15, 14, 30).atZone(SEOUL).toInstant()
+                val deadline = minOf(now.plusSeconds(1800), close)
+                if (
+                    !executionGate.evaluate(
+                        TargetRequest(key, decision.symbol, decision.side, target, deadline),
+                        quote,
+                        now,
+                    )
+                )
+                    continue
                 val usableCash =
                     if (book.parking.enabled)
                         (portfolio.cash - book.parking.reserveCash).coerceAtLeast(0)
@@ -231,6 +276,7 @@ class GroupTradingCoordinator(
             }
         }
         // 실행 가능한 전략 주문이 없을 때만 남는 현금을 파킹한다.
+        // 가상 타겟 등록만으로 현금을 묶지 않는다. 실제 반전 트리거 후에만 파킹을 청산한다.
         return parkingOrder(account, portfolio, quotes, evidence, limits, now, null)
     }
 

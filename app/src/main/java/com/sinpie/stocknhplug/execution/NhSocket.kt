@@ -9,9 +9,7 @@ import java.time.format.DateTimeFormatter
 import okhttp3.*
 import org.json.JSONObject
 
-/**
- * A disconnected stream invalidates prices. Reconnection is explicit and requires account resync.
- */
+/** 단일 시세 연결을 공유한다. 주문/체결은 모의 REST로 대사해 별도 통보 WS 세션을 쓰지 않는다. */
 class NhSocket(
     private val transport: NhTransport,
     private val onQuote: (Quote) -> Unit,
@@ -20,94 +18,154 @@ class NhSocket(
 ) : MarketStream {
     private var socket: WebSocket? = null
     @Volatile private var generation = 0
+    @Volatile private var opened = false
+    private var token = ""
+    private var desired = emptySet<String>()
+    private val acked = mutableSetOf<String>()
 
-    /** 기존 연결 세대를 폐기하고 새 구독을 요청한다. 오래된 콜백은 generation으로 배제한다. */
     override suspend fun connect(symbols: List<String>) {
         close()
         require(symbols.size <= 10 && symbols.all { it.matches(Regex("[0-9]{6}")) })
-        val token = transport.token()
-        val id = ++generation
-        val url =
-            if (transport.environment == Environment.MOCK) "wss://moapi.nhplug.com:17070/websocket"
-            else "wss://api.nhplug.com:7070/websocket"
-        socket =
+        val value = transport.token()
+        val id: Int
+        synchronized(this) {
+            token = value
+            desired = symbols.toSet()
+            id = ++generation
+        }
+        val created =
             transport.client.newWebSocket(
-                Request.Builder().url(url).build(),
+                Request.Builder().url("wss://api.nhplug.com:7070/websocket").build(),
                 object : WebSocketListener() {
-                    /** 시세와 계좌 체결통보를 구독한다. 연결 성공 자체가 가격 데이터 유효성을 의미하지 않는다. */
                     override fun onOpen(webSocket: WebSocket, response: Response) {
-                        if (id != generation) {
-                            webSocket.close(1000, "stopped")
-                            return
+                        synchronized(this@NhSocket) {
+                            if (id != generation) {
+                                webSocket.close(1000, "stopped")
+                                return
+                            }
+                            socket = webSocket
+                            opened = true
+                            desired.forEach { send(it, true) }
                         }
-                        symbols.forEach { symbol ->
-                            webSocket.send(
-                                json(
-                                        "header" to json("token" to token, "tr_type" to "1"),
-                                        "body" to json("tr_cd" to "oc", "tr_key" to symbol),
-                                    )
-                                    .toString()
-                            )
-                        }
-                        // Account execution notifications trigger authoritative REST refresh, never
-                        // additive fill accounting.
-                        webSocket.send(
-                            json(
-                                    "header" to json("token" to token, "tr_type" to "1"),
-                                    "body" to json("tr_cd" to "d2", "tr_key" to ""),
-                                )
-                                .toString()
-                        )
-                        onEvent("WebSocket 연결 · 실시간 시세 대기")
+                        onEvent("시세 WebSocket 연결 · 구독 확인 대기")
                     }
 
-                    /** 서버 JSON을 채널별로 분기한다. 체결 통보를 보유수량에 가산하지 않고 REST 조회를 정본으로 유지한다. */
                     override fun onMessage(webSocket: WebSocket, text: String) {
                         if (id != generation) return
                         try {
                             val j = JSONObject(text)
-                            if (j.has("rsp_cd") && j.optString("rsp_cd").startsWith("WSS")) {
-                                onDisconnect()
+                            val header = j.optJSONObject("header") ?: return
+                            val body = j.optJSONObject("body")
+                            if (header.has("rsp_cd")) {
+                                val accepted = acknowledgedSymbols(j)
+                                synchronized(this@NhSocket) {
+                                    if (id != generation) return
+                                    acked += accepted.intersect(desired)
+                                }
+                                if (header.optString("rsp_cd") != "00000")
+                                    onEvent("시세 구독 미확인 · REST 조회 유지")
                                 return
                             }
-                            val header = j.optJSONObject("header") ?: return
-                            val body = j.optJSONObject("body") ?: return
-                            when (header.optString("tr_cd")) {
-                                "oc" ->
-                                    parseQuote(body, Instant.now())
-                                        ?.takeIf { it.symbol in symbols }
-                                        ?.let(onQuote)
-                                "d2" -> onEvent("체결 통보 수신 · 다음 잔고 동기화에서 확인")
-                            }
+                            if (header.optString("tr_cd") != "oc" || body == null) return
+                            val quote = parseQuote(body, Instant.now()) ?: return
+                            val valid =
+                                synchronized(this@NhSocket) {
+                                    id == generation &&
+                                        quote.symbol in acked &&
+                                        quote.symbol in desired
+                                }
+                            if (valid) onQuote(quote)
                         } catch (_: Exception) {
                             onEvent("시세 형식 오류 · 해당 메시지 제외")
                         }
+                    }
+
+                    private fun disconnected() {
+                        synchronized(this@NhSocket) {
+                            if (id != generation) return
+                            opened = false
+                            acked.clear()
+                        }
+                        onDisconnect()
                     }
 
                     override fun onFailure(
                         webSocket: WebSocket,
                         t: Throwable,
                         response: Response?,
-                    ) {
-                        if (id == generation) onDisconnect()
-                    }
+                    ) = disconnected()
 
-                    override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                        if (id == generation) onDisconnect()
-                    }
+                    override fun onClosed(webSocket: WebSocket, code: Int, reason: String) =
+                        disconnected()
                 },
             )
+        synchronized(this) {
+            if (id == generation) socket = created else created.close(1000, "stopped")
+        }
     }
 
-    /** 세대 번호를 먼저 변경하므로 의도적으로 닫은 소켓의 종료 콜백이 새 세션을 정지시키지 않는다. */
+    /** 연결 재생성 없이 차이만 전송한다. ACK 전 가격은 상위로 전달하지 않는다. */
+    @Synchronized
+    override fun replaceSubscriptions(symbols: Set<String>) {
+        require(symbols.size <= 10 && symbols.all { it.matches(Regex("[0-9]{6}")) })
+        val removed = desired - symbols
+        val added = symbols - desired
+        desired = symbols.toSet()
+        acked.retainAll(desired)
+        if (opened) {
+            removed.forEach { send(it, false) }
+            added.forEach { send(it, true) }
+        }
+    }
+
+    private fun send(symbol: String, subscribe: Boolean) {
+        if (
+            socket?.send(
+                json(
+                        "header" to
+                            json("token" to token, "tr_type" to if (subscribe) "1" else "2"),
+                        "body" to json("tr_cd" to "oc", "tr_key" to symbol),
+                    )
+                    .toString()
+            ) != true
+        )
+            acked -= symbol
+    }
+
+    @Synchronized override fun acknowledged() = acked.toSet()
+
+    override fun isConnected() = opened
+
+    @Synchronized
     override fun close() {
         generation++
+        opened = false
+        acked.clear()
+        desired = emptySet()
+        token = ""
         socket?.close(1000, "session ended")
         socket = null
     }
 
     companion object {
-        /** 서울 거래일과 거래소 시각을 결합한다. 잘못된 종목/호가·오래된 시각은 null로 제외한다. */
+        /** NH ACK는 header의 결과/채널과 body.tr_key 배열을 함께 확인해야 한다. */
+        fun acknowledgedSymbols(message: JSONObject): Set<String> {
+            val header = message.optJSONObject("header") ?: return emptySet()
+            if (
+                header.optString("rsp_cd") != "00000" ||
+                    header.optString("tr_cd") != "oc" ||
+                    header.optString("tr_type") != "1"
+            )
+                return emptySet()
+            val body = message.optJSONObject("body") ?: return emptySet()
+            val keys = body.optJSONArray("tr_key")
+            val values =
+                if (keys == null) listOf(body.optString("tr_key"))
+                else (0 until keys.length()).map { keys.optString(it) }
+            return values.filter { it.matches(Regex("[0-9]{6}")) }.toSet()
+        }
+
+        /** 서울 거래일과 거래소 시각을 결합한다. 낡은 시세는 추적·주문 양쪽에서 제외한다. */
         fun parseQuote(body: JSONObject, now: Instant): Quote? {
             val symbol = body.getString("code")
             if (!symbol.matches(Regex("[0-9]{6}"))) return null

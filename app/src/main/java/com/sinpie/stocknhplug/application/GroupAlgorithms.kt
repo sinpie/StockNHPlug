@@ -10,6 +10,7 @@ data class GroupDecision(
     val quantity: Long,
     val reason: String,
     val occurrence: String,
+    val targetPrice: Long? = null,
 )
 
 data class GroupContext(
@@ -31,38 +32,49 @@ class AveragingDownAlgorithm : GroupAlgorithm {
     override val id = "averaging"
     override val name = "물타기"
 
-    override fun decide(context: GroupContext): List<GroupDecision> =
-        context.positions.mapNotNull { p ->
-            val q = context.quotes[p.symbol] ?: return@mapNotNull null
-            if (
-                p.quantity > 0 &&
-                    p.average > 0 &&
-                    q.bid >= p.average * (1 + context.group.takeProfitPercent / 100)
-            ) {
-                val quantity = minOf(p.quantity, context.group.orderBudget / q.bid)
-                return@mapNotNull if (quantity > 0)
-                    GroupDecision(p.symbol, Side.SELL, quantity, "그룹 목표 수익률 도달", "take-profit")
-                else null
+    /** 보유 종목은 현재 가격이 멀어도 희망 매수/매도가를 미리 추적 계층에 제시한다. */
+    override fun decide(context: GroupContext): List<GroupDecision> = buildList {
+        context.positions
+            .filter { it.quantity > 0 && it.average > 0 }
+            .forEach { p ->
+                val sellTarget =
+                    kotlin.math
+                        .ceil(p.average * (1 + context.group.takeProfitPercent / 100))
+                        .toLong()
+                val sellQty = minOf(p.quantity, context.group.orderBudget / sellTarget)
+                if (sellQty > 0)
+                    add(
+                        GroupDecision(
+                            p.symbol,
+                            Side.SELL,
+                            sellQty,
+                            "그룹 익절 타겟",
+                            "take-profit",
+                            sellTarget,
+                        )
+                    )
+                if (p.buys <= context.group.maxAdditionalBuys) {
+                    val buyTarget =
+                        (p.average * (1 - context.group.dropPercent / 100))
+                            .toLong()
+                            .coerceAtLeast(1)
+                    val buyQty =
+                        (minOf(context.cash, context.group.orderBudget) / (buyTarget * 1.01))
+                            .toLong()
+                    if (buyQty > 0)
+                        add(
+                            GroupDecision(
+                                p.symbol,
+                                Side.BUY,
+                                buyQty,
+                                "그룹 추가매수 타겟",
+                                "averaging",
+                                buyTarget,
+                            )
+                        )
+                }
             }
-            if (
-                p.quantity <= 0 ||
-                    p.average <= 0 ||
-                    p.buys > context.group.maxAdditionalBuys ||
-                    q.ask > p.average * (1 - context.group.dropPercent / 100)
-            )
-                return@mapNotNull null
-            val quantity =
-                (minOf(context.cash, context.group.orderBudget) / (q.ask * 1.01)).toLong()
-            if (quantity <= 0) null
-            else
-                GroupDecision(
-                    p.symbol,
-                    Side.BUY,
-                    quantity,
-                    "그룹 평균가 대비 ${context.group.dropPercent}% 하락",
-                    "averaging",
-                )
-        }
+    }
 }
 
 class RebalancingAlgorithm : GroupAlgorithm {

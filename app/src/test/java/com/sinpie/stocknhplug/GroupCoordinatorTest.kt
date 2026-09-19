@@ -151,7 +151,13 @@ class GroupCoordinatorTest {
         val broker = FakeBroker()
         val engine = TradingEngine(broker, store) { now }.also { it.start(portfolio) }
         val coordinator =
-            GroupTradingCoordinator(store, source, GroupAlgorithmRegistry.defaults(), engine)
+            GroupTradingCoordinator(
+                store,
+                source,
+                GroupAlgorithmRegistry.defaults(),
+                engine,
+                ImmediateTestGate(),
+            )
         val q = quote.copy(symbol = "005940")
         val e =
             evidence().let {
@@ -206,12 +212,33 @@ class GroupCoordinatorTest {
                 holdings = listOf(Holding("005940", "test", 100, 10000, 10000, 0)),
             )
         val parkingQuote = quote.copy(symbol = "005940", ask = 10000)
-        val quotes = mapOf(quote.symbol to quote, parkingQuote.symbol to parkingQuote)
+        var quotes = mapOf(quote.symbol to quote, parkingQuote.symbol to parkingQuote)
         val broker = FakeBroker()
         val engine = TradingEngine(broker, store) { now }.also { it.start(p) }
+        val gate = com.sinpie.stocknhplug.trading.NamuExecutionGate()
+        fun observe(q: Quote) =
+            gate.observe(
+                PriceSnapshot(
+                    q,
+                    MarketRules(now.atZone(SEOUL).toLocalDate(), 7000, 13000, InstrumentKind.STOCK),
+                    PriceSource.REST,
+                ),
+                now,
+            )
+        observe(quote)
         val coordinator =
-            GroupTradingCoordinator(store, source, GroupAlgorithmRegistry.defaults(), engine)
+            GroupTradingCoordinator(store, source, GroupAlgorithmRegistry.defaults(), engine, gate)
         val limits = Strategy(manageHoldings = true)
+        // 가상 매수만 등록했을 때는 파킹을 팔지 않는다. 실제 반전 후에만 자금을 확보한다.
+        assertNull(coordinator.tick(account, p, quotes, listOf(evidence()), limits, now))
+        assertEquals(0, broker.sent)
+        val low = quote.copy(price = 9000, bid = 9000, ask = 9000)
+        observe(low)
+        quotes = quotes + (low.symbol to low)
+        assertNull(coordinator.tick(account, p, quotes, listOf(evidence()), limits, now))
+        val rebound = quote.copy(price = 9800, bid = 9800, ask = 9800)
+        observe(rebound)
+        quotes = quotes + (rebound.symbol to rebound)
         val sale = coordinator.tick(account, p, quotes, listOf(evidence()), limits, now)!!
         assertEquals(ParkingPolicy.GROUP_ID, sale.intent.groupId)
         assertEquals(Side.SELL, sale.intent.side)
@@ -244,7 +271,13 @@ class GroupCoordinatorTest {
         val broker = FakeBroker()
         val engine = TradingEngine(broker, store) { now }.also { it.start(portfolio) }
         val coordinator =
-            GroupTradingCoordinator(store, source, GroupAlgorithmRegistry.defaults(), engine)
+            GroupTradingCoordinator(
+                store,
+                source,
+                GroupAlgorithmRegistry.defaults(),
+                engine,
+                ImmediateTestGate(),
+            )
         val q = quote.copy(symbol = "005940")
         assertNull(
             coordinator.tick(
@@ -280,7 +313,13 @@ class GroupCoordinatorTest {
         val engine = TradingEngine(broker, store) { now }
         engine.start(portfolio)
         val coordinator =
-            GroupTradingCoordinator(store, null, GroupAlgorithmRegistry.defaults(), engine)
+            GroupTradingCoordinator(
+                store,
+                null,
+                GroupAlgorithmRegistry.defaults(),
+                engine,
+                ImmediateTestGate(),
+            )
         assertTrue(
             runCatching {
                     coordinator.tick(
@@ -304,7 +343,13 @@ class GroupCoordinatorTest {
         val engine = TradingEngine(broker, store) { now }
         engine.start(portfolio)
         val coordinator =
-            GroupTradingCoordinator(store, source, GroupAlgorithmRegistry.defaults(), engine)
+            GroupTradingCoordinator(
+                store,
+                source,
+                GroupAlgorithmRegistry.defaults(),
+                engine,
+                ImmediateTestGate(),
+            )
         val first =
             coordinator.tick(
                 account,
@@ -336,7 +381,13 @@ class GroupCoordinatorTest {
         val engine = TradingEngine(broker, store) { now }
         engine.start(portfolio)
         val coordinator =
-            GroupTradingCoordinator(store, source, GroupAlgorithmRegistry.defaults(), engine)
+            GroupTradingCoordinator(
+                store,
+                source,
+                GroupAlgorithmRegistry.defaults(),
+                engine,
+                ImmediateTestGate(),
+            )
         assertNull(
             coordinator.tick(
                 account,

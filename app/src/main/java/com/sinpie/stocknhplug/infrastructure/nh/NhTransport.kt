@@ -107,7 +107,12 @@ class NhTransport(private val vault: SecureVault, val environment: Environment) 
                     dispatchGuard()
                     val request =
                         Request.Builder()
-                            .url(base + path)
+                            // 공식 currentPrice는 live 시세 서버 전용이다. 주문 경로는 환경 base를 유지한다.
+                            .url(
+                                (if (path == "/krstock/quote/v1/currentPrice")
+                                    "https://api.nhplug.com:8443"
+                                else base) + path
+                            )
                             .header("Authorization", "Bearer $token")
                             .post(
                                 JSONObject()

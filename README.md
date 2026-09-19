@@ -56,3 +56,6 @@ Android 11 에뮬레이터의 UI 테스트 호스트에서 캡처한 연결 전 
 <img src="docs/images/dashboard.png" width="360" alt="StockNHPlug 연결 전 대시보드" />
 
 파킹종목은 전략 화면의 `현금 파킹`에서 설정합니다. [설정·매매 흐름·현재 제한](docs/PARKING.md)을 확인하세요. 실제 NH 자동주문은 기존 검증 게이트로 잠겨 있습니다.
+
+### NamuMagic 가격 추적
+사용자 저장소 기준으로 그룹별 반전 타겟, 10% 경계 WS/적응형 REST 전환, 트리거 후 파킹 자금 조정을 구현했습니다. [클래스·수식·차이와 한계](docs/PRICE_TRACKING.md). NH 실제 통합 검증 전 자동주문 시작 잠금은 유지됩니다.

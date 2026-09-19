@@ -6,9 +6,11 @@ import com.sinpie.stocknhplug.data.*
 import com.sinpie.stocknhplug.domain.Environment
 import com.sinpie.stocknhplug.execution.*
 import com.sinpie.stocknhplug.infrastructure.nh.NhTransport
+import com.sinpie.stocknhplug.marketdata.NhCurrentPriceProvider
 import com.sinpie.stocknhplug.marketdata.NhPriceHistoryProvider
 import com.sinpie.stocknhplug.research.*
 import com.sinpie.stocknhplug.research.provider.DartClient
+import com.sinpie.stocknhplug.trading.NamuExecutionGate
 
 /**
  * 의존성 조립의 유일한 진입점. Activity/Service는 같은 controller를 공유한다. 제공자 교체는 이곳에서 수행하며 화면·매매 규칙에 HTTP나 키 접근을
@@ -30,9 +32,11 @@ class AppContainer private constructor(context: Context) {
                         if (dartKey.isBlank()) null else DartClient(dartKey),
                         UnlicensedNewsProvider(),
                     ),
+                    currentPrices = NhCurrentPriceProvider(transport),
                 )
             },
             TechnicalStrategy(),
+            NamuExecutionGate(),
             GroupAlgorithmRegistry.defaults(),
         )
 

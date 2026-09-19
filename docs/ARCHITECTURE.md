@@ -6,13 +6,13 @@
 
 ## 전략 그룹 실행의 현재 진입점
 
-현재 사용자 자동매매는 TradingController.startSession → GroupTradingCoordinator.tick → GroupAlgorithm/추천/정기매수 → TradingEngine.submit 경로입니다. 기존 TechnicalStrategy/SignalEngine 점수는 참고 분석과 호환 계약으로 남기며 실제 기본 정책은 AveragingDownAlgorithm과 RebalancingAlgorithm입니다. 전략/그룹 모델과 함수별 상세는 [GROUP_STRATEGIES.md](GROUP_STRATEGIES.md)를 참조합니다.
+현재 사용자 자동매매는 TradingController.startSession → HybridPriceMonitor / GroupTradingCoordinator.tick → GroupAlgorithm/추천/정기매수 → ExecutionGate → 파킹 자금 조정 → TradingEngine.submit 경로입니다. 기존 TechnicalStrategy/SignalEngine 점수는 참고 분석과 호환 계약으로 남기며 실제 기본 정책은 AveragingDownAlgorithm과 RebalancingAlgorithm입니다. 전략/그룹 모델과 함수별 상세는 [GROUP_STRATEGIES.md](GROUP_STRATEGIES.md)를 참조합니다.
 
 GroupAlgorithmRegistry는 AppContainer에서 주입합니다. GroupExecutionSource는 확정 체결과 앱 주문의 대응 포트이며 NHPlug에서는 아직 null입니다. GroupLedger가 누적 체결을 그룹별로 재생하고 GroupCodec/EncryptedAppStorage가 설정과 대사를 암호화 보관합니다. AppState에 book/groupPositions/groupExecutionReady/groupAlgorithms를 추가했습니다. 전략 변경은 saveBook에서 검증하며 기록이 있는 그룹의 삭제/소유권 이동을 금지합니다.
 
 ## 0. 조립·교체 계약
 
-`AppContainer`는 Android applicationContext를 소유하는 의존성 조립 지점입니다. `TradingController(ApplicationStorage, SessionFactory, TradingStrategy)`를 생성하고 Activity/Service에 동일 객체를 제공합니다. 구현 교체 방법과 제약은 [EXTENDING.md](EXTENDING.md)에 정리합니다.
+`AppContainer`는 Android applicationContext를 소유하는 의존성 조립 지점입니다. `TradingController(ApplicationStorage, SessionFactory, TradingStrategy, ExecutionGate)`를 생성하고 Activity/Service에 동일 객체를 제공합니다. 구현 교체 방법과 제약은 [EXTENDING.md](EXTENDING.md)에 정리합니다.
 
 - `ApplicationStorage` → `EncryptedAppStorage`: 응용 저장 포트와 Keystore/LocalStore 어댑터. 키 원문 조회는 응용/UI에 노출하지 않습니다.
 - `SessionFactory` → `BrokerSession`: Broker, MarketStream, ResearchRepository를 연결마다 생성합니다. 컨트롤러가 NH/DART 객체를 직접 만들지 않습니다.
@@ -29,7 +29,7 @@ GroupAlgorithmRegistry는 AppContainer에서 주입합니다. GroupExecutionSour
 - `saveCredentials`: 키·secret·OpenDART 키를 기기 저장소에 암호화하고 기존 토큰과 연결을 무효화합니다. UI는 저장 후 입력 문자열을 비웁니다.
 - `saveSettings`: `Strategy.validate` 후 설정을 암호화 저장. 실행 중 편집 금지.
 - `analyze`: 관심종목별 가격·재무·공시 근거를 수집하고 지표를 계산합니다. 매수 가능 여부는 점수와 별개로 `ResearchEvidence.buyBlockers`가 결정합니다.
-- `startSession`: 검증된 잔고를 기준으로 세션 시작. 15초 단위 잔고/체결 대사와 GroupTradingCoordinator 평가를 수행합니다. 그룹 체결 대사 제공자가 없으면 시작 자체를 차단합니다. 사용자 정지 또는 안전 오류까지 수행하며 앱 자체의 시간 만료는 없습니다. 최근 앱 목록 제거로 정지하지 않지만 재부팅/프로세스 종료 후 자동 재시작하지 않습니다.
+- `startSession`: 검증된 잔고를 기준으로 세션 시작. 약 15초 단위 잔고/체결 대사와 약 1초 단위 추적/GroupTradingCoordinator 평가를 수행합니다. 그룹 체결 대사 제공자가 없으면 시작 자체를 차단합니다. 사용자 정지 또는 안전 오류까지 수행하며 앱 자체의 시간 만료는 없습니다. 최근 앱 목록 제거로 정지하지 않지만 재부팅/프로세스 종료 후 자동 재시작하지 않습니다.
 - `stop`: 매매 계층 정지 플래그를 먼저 내리고 루프를 취소합니다. 이미 접수된 주문 취소 기능은 아닙니다.
 - `refreshPnl`: 증권사 최근 30일 일별 손익을 별도 조회합니다. 앱 주문 손익으로 오표시하지 않습니다.
 - 오류 메시지는 통제된 문구만 로그로 전달합니다. HTTP URL/본문/예외 원문을 사용자 로그에 기록하지 않습니다.
@@ -44,7 +44,7 @@ GroupAlgorithmRegistry는 AppContainer에서 주입합니다. GroupExecutionSour
 ### `TradingService` (`platform`)
 상태 관찰 Job을 하나만 유지하며 반복 시작 intent가 관찰자를 누적하지 않습니다. foreground 전환 예외는 세션 정지 경로로 처리합니다.
 
-사용자가 화면에서 시작하는 Android foreground service입니다. `specialUse` 용도는 가격 감시와 조건부 증권 주문 실행이며 정지 액션을 가진 지속 알림을 제공합니다. Play Console의 용도 선언과 심사가 필요합니다. `START_NOT_STICKY`, `stopWithTask=true`로 프로세스 복구 시 자동 주문하지 않습니다. 다른 앱 사용 중에도 세션이 유지되지만 OS 강제종료·절전·네트워크 지연에 대한 실행 보장은 없습니다.
+사용자가 화면에서 시작하는 Android foreground service입니다. `specialUse` 용도는 가격 감시와 조건부 증권 주문 실행이며 정지 액션을 가진 지속 알림을 제공합니다. Play Console의 용도 선언과 심사가 필요합니다. `START_NOT_STICKY`, `stopWithTask=false`로 프로세스 복구 시 자동 주문하지 않습니다. 다른 앱 사용 중에도 세션이 유지되지만 OS 강제종료·절전·네트워크 지연에 대한 실행 보장은 없습니다.
 
 ## 2. 매매 계층 (`trading`)
 
@@ -70,7 +70,7 @@ HTTP 성공과 업무 성공을 구분합니다. 오류 문구/심각도와 응�
 `Broker` 구현. 계좌목록·잔고·현금매수/매도 가능수량·주문·당일체결·일별손익의 필드 매핑을 소유합니다. 잔고는 연속조회를 모두 마친 후 집계값을 읽습니다. 조회에서 동일 종목의 여러 잔고는 표시용으로 합산하되 자동매도는 현금 매도 가능수량으로 제한합니다. 신용·공매도·해외주식·파생은 주문하지 않습니다. 기본 구성의 실거래는 `BuildConfig.LIVE_TRADING_ENABLED=false`입니다.
 
 ### `NhSocket`
-모의 `17070/websocket`, 운영 `7070/websocket`의 공식 JSON 프로토콜. `oc` 체결가와 `d2` 체결통보 채널. 체결 메시지를 잔고에 누적 가산하지 않아 중복 이벤트가 보유수량을 부풀리지 않습니다. generation으로 과거 소켓 메시지를 무시하며 연결 단절 시 시세 무효화와 정지를 통지합니다. 연결 재개는 계좌를 재동기화하는 명시적 연결 버튼입니다. 컨트롤러는 보유종목과 관심종목 합집합이 10개를 초과하면 연결 완료로 표시하지 않습니다. 계좌 전환 시 기존 구독을 닫고 새 계좌로 다시 구성합니다.
+운영 `7070/websocket`의 공식 시세 `oc`만 사용합니다. header ACK와 body.tr_key를 확인한 종목만 전달합니다. generation으로 과거 연결을 차단하고 차등 등록/해제합니다. 단절 시 신선한 REST로 복귀하고 재연결합니다. 계좌 체결은 모의 REST로 대사합니다. 감시 합집합 앱 한도 100개, 동시 WS 앱 한도 10개이며 초과 근접 종목은 REST입니다.
 
 ## 4. 데이터·리서치 계층 (`research`)
 
@@ -109,3 +109,6 @@ HTTP 성공과 업무 성공을 구분합니다. 오류 문구/심각도와 응�
 
 ## 파킹 현금 정책 (2026-09-20)
 `StrategyBook.parking` → `ParkingSettingsCard` 편집 → `TradingController.saveBook` 암호화 저장 순서입니다. `ParkingPolicy`는 사용자 전략그룹 밖의 예약 소유권을 가지며 `ledgerGroups()`로 체결 대사·수량 검증에 포함합니다. `GroupTradingCoordinator`는 적격 전략 매수의 자금 부족 시 `ParkingPlanner`의 매도 제안을 실행하고 즉시 반환합니다. 다음 회차의 종료 체결·잔고 확인 전 주식 매수는 없습니다. 남는 현금 매수는 모든 전략 판단 뒤 수행합니다. [클래스 및 자금 흐름](PARKING.md)을 참고하세요.
+
+## 적응형 추적 클래스 (2026-09-20)
+`AppContainer`가 `NamuExecutionGate`와 세션의 `NhCurrentPriceProvider`를 주입합니다. `ExecutionGate`는 매매 판단 포트, `CurrentPriceProvider`는 시장 데이터 포트입니다. `MarketRules`와 `PriceSnapshot`은 검증 메타데이터/출처를 소유합니다. `HybridQuotePolicy`가 거리/단조 시각을 계산하고 `HybridPriceMonitor`가 전송을 조정합니다. UI 상태는 `AppState.tracking/quoteRoutes`, 로그 화면은 읽기 전용입니다. 정지 시 가상 추적 상태를 비우며 실제 주문 저널과 분리합니다. 함수별 입출력·수식·흐름은 [PRICE_TRACKING.md](PRICE_TRACKING.md)에 상세히 기록했습니다.

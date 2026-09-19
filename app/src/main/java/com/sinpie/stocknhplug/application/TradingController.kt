@@ -2,6 +2,7 @@ package com.sinpie.stocknhplug.application
 
 import com.sinpie.stocknhplug.domain.*
 import com.sinpie.stocknhplug.research.*
+import com.sinpie.stocknhplug.trading.QuoteRouteStatus
 import com.sinpie.stocknhplug.trading.TradingEngine
 import java.time.*
 import kotlinx.coroutines.*
@@ -15,6 +16,8 @@ data class AppState(
     val groupAlgorithms: Map<String, String> = emptyMap(),
     val groupPositions: Map<String, List<GroupPosition>> = emptyMap(),
     val groupExecutionReady: Boolean = false,
+    val tracking: List<TargetStatus> = emptyList(),
+    val quoteRoutes: List<QuoteRouteStatus> = emptyList(),
     val accounts: List<Account> = emptyList(),
     val selected: Account? = null,
     val portfolio: Portfolio? = null,
@@ -39,6 +42,7 @@ class TradingController(
     private val store: ApplicationStorage,
     private val sessionFactory: SessionFactory,
     private val strategy: TradingStrategy,
+    private val executionGate: ExecutionGate,
     private val groupRegistry: GroupAlgorithmRegistry = GroupAlgorithmRegistry.defaults(),
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -47,6 +51,8 @@ class TradingController(
     private var engine: TradingEngine? = null
     private var loop: Job? = null
     private var groups: GroupTradingCoordinator? = null
+    private var monitor: HybridPriceMonitor? = null
+    private var priceProvider: CurrentPriceProvider? = null
     private var researchRepository: ResearchRepository? = null
     private val mutable = MutableStateFlow(AppState())
     val state: StateFlow<AppState> = mutable
@@ -103,6 +109,10 @@ class TradingController(
         engine = null
         researchRepository = null
         groups = null
+        monitor?.clear()
+        monitor = null
+        priceProvider = null
+        executionGate.clear()
         change {
             it.copy(
                 hasCredentials = true,
@@ -111,6 +121,9 @@ class TradingController(
                 selected = null,
                 portfolio = null,
                 groupPositions = emptyMap(),
+                groupExecutionReady = false,
+                tracking = emptyList(),
+                quoteRoutes = emptyList(),
                 quotes = emptyMap(),
                 executions = emptyList(),
                 pnl = emptyList(),
@@ -203,25 +216,36 @@ class TradingController(
         }
         val session =
             sessionFactory.create(
-                { quote ->
-                    scope.launch {
-                        change { it.copy(quotes = it.quotes + (quote.symbol to quote)) }
-                    }
-                },
+                { quote -> scope.launch { monitor?.onWebsocket(quote) } },
                 { msg -> scope.launch { log(msg) } },
-                {
-                    scope.launch {
-                        stop("실시간 연결 끊김 · 주문 정지")
-                        change { it.copy(connected = false, quotes = emptyMap()) }
-                    }
-                },
+                { scope.launch { log("시세 WebSocket 연결 끊김 · 검증된 REST 시세로 추적, 재연결 대기") } },
             )
         broker = session.broker
         check(session.broker.environment == Environment.MOCK) { "현재 배포 구성은 모의 거래만 허용합니다." }
         socket = session.stream
+        priceProvider = session.currentPrices
+        executionGate.clear()
+        monitor?.clear()
+        monitor =
+            session.currentPrices?.let { prices ->
+                HybridPriceMonitor(
+                    prices,
+                    session.stream,
+                    executionGate,
+                    { q -> change { it.copy(quotes = it.quotes + (q.symbol to q)) } },
+                    { log(it) },
+                )
+            }
         researchRepository = session.research
         engine = TradingEngine(session.broker, store, strategy)
-        groups = GroupTradingCoordinator(store, session.groupExecutions, groupRegistry, engine!!)
+        groups =
+            GroupTradingCoordinator(
+                store,
+                session.groupExecutions,
+                groupRegistry,
+                engine!!,
+                executionGate,
+            )
         change { it.copy(groupExecutionReady = session.groupExecutions != null) }
         val accounts = session.broker.accounts()
         check(
@@ -263,8 +287,11 @@ class TradingController(
     private suspend fun subscribeSelectedAccount() {
         val symbols =
             (state.value.portfolio!!.holdings.map { it.symbol } + configuredSymbols()).distinct()
-        check(symbols.size <= 10) { "관심종목과 보유종목 합계가 실시간 관리 한도를 초과합니다." }
-        socket!!.connect(symbols)
+        check(symbols.size <= 100) { "현재 가격 추적은 고유 종목 100개까지 지원합니다." }
+        executionGate.clear()
+        monitor?.clear()
+        socket!!.connect(emptyList())
+        monitor?.step(symbols.toSet())
     }
 
     /** 선택 계좌의 잔고·체결을 모두 조회한 후 스냅샷을 저장한다. 일부 응답만 성공한 상태를 완성된 화면으로 게시하지 않는다. */
@@ -350,6 +377,7 @@ class TradingController(
     fun startSession() {
         val s = state.value
         check(s.connected && !s.busy && !s.storageError && s.portfolio != null)
+        check(monitor != null && priceProvider != null) { "검증된 REST 시세 제공자가 필요합니다." }
         check(s.groupExecutionReady) { "NHPlug 그룹별 체결 대사 검증 전 자동주문은 잠겨 있습니다." }
         val enabled =
             s.book.groups.filter {
@@ -375,22 +403,42 @@ class TradingController(
         loop =
             scope.launch {
                 try {
+                    var nextBalance = 0L
                     // 서비스가 수명을 소유한다. 화면 종료나 임의의 시간 제한으로 매매를 끊지 않는다.
                     // OS 종료·네트워크/원장 오류는 여전히 안전 정지하며 주문을 자동 재전송하지 않는다.
                     while (isActive && state.value.running) {
-                        refreshInternal()
+                        val nanos = System.nanoTime()
+                        if (nanos >= nextBalance) {
+                            refreshInternal()
+                            nextBalance = System.nanoTime() + 15_000_000_000L
+                        }
+                        val watched =
+                            (configuredSymbols() +
+                                    state.value.portfolio!!.holdings.map { it.symbol })
+                                .toSet()
+                        check(watched.size <= 100)
+                        monitor!!.step(watched)
                         val current = state.value
                         val result =
-                            groups!!.tick(
-                                current.selected!!,
-                                current.portfolio!!,
-                                current.quotes,
-                                current.research,
-                                current.settings,
-                                Instant.now(),
-                            )
+                            if (!trackingSession(Instant.now())) null
+                            else
+                                groups!!.tick(
+                                    current.selected!!,
+                                    current.portfolio!!,
+                                    current.quotes,
+                                    current.research,
+                                    current.settings,
+                                    Instant.now(),
+                                )
                         if (result != null) log("${result.intent.reason} · 주문 접수, 체결 대사 대기")
-                        delay(15_000)
+                        if (result != null) nextBalance = 0L
+                        change {
+                            it.copy(
+                                tracking = executionGate.targets(),
+                                quoteRoutes = monitor!!.statuses(),
+                            )
+                        }
+                        delay(1_000)
                     }
                     stop("자동매매 세션 종료")
                 } catch (e: CancellationException) {
@@ -407,7 +455,19 @@ class TradingController(
         engine?.stop()
         val stopping = loop?.isCompleted == false
         loop?.cancel()
-        change { it.copy(running = false, busy = it.busy || stopping) }
+        socket?.close()
+        monitor?.clear()
+        executionGate.clear()
+        change {
+            it.copy(
+                running = false,
+                connected = false,
+                quotes = emptyMap(),
+                tracking = emptyList(),
+                quoteRoutes = emptyList(),
+                busy = it.busy || stopping,
+            )
+        }
         log(reason)
     }
 
@@ -425,6 +485,8 @@ class TradingController(
         engine = null
         researchRepository = null
         groups = null
+        monitor = null
+        priceProvider = null
         change {
             AppState(
                 groupAlgorithms = groupRegistry.names,

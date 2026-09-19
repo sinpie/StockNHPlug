@@ -723,6 +723,32 @@ private fun PnlChart(values: List<Float>) {
 private fun LogsScreen(s: AppState) {
     var filter by rememberSaveable { mutableStateOf(false) }
     Heading("실시간 실행 로그", "오류와 자동매매 판단을 시간순으로 확인하세요.")
+    Panel("가격 추적") {
+        if (s.tracking.isEmpty()) Text("등록된 매매 타겟이 없습니다.", color = Muted)
+        s.tracking.forEach { t ->
+            val group = s.book.groups.find { t.key.startsWith(it.id + "|") }
+            Text(
+                "${group?.name ?: "전략"} · ${t.symbol} · ${if (t.side == Side.BUY) "매수" else "매도"}",
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                "제시 ${won(t.strategyPrice)} · ${if (t.side == Side.BUY) "저점" else "고점"} ${won(t.extreme)}",
+                fontSize = 12.sp,
+            )
+            Text(
+                "트리거 ${t.trigger?.let { String.format(Locale.KOREA, "%,.1f원", it) } ?: "대기"} · ${t.message}",
+                fontSize = 12.sp,
+                color = Teal,
+            )
+        }
+        s.quoteRoutes.forEach { r ->
+            Text(
+                "${r.symbol} · ${r.mode} · 거리 ${r.distance?.let { String.format(Locale.KOREA, "%.2f%%", it) } ?: "대기"}",
+                fontSize = 12.sp,
+                color = Muted,
+            )
+        }
+    }
     FilterChip(filter, { filter = !filter }, label = { Text("오류만 보기") })
     Panel {
         val events = s.events.filter { !filter || it.level == "ERROR" }

@@ -38,6 +38,13 @@ interface ApplicationStorage : OrderJournal {
 interface MarketStream {
     suspend fun connect(symbols: List<String>)
 
+    /** 연결을 재생성하지 않고 차이만 구독/해제한다. ACK 전 시세는 거래에 사용하지 않는다. */
+    fun replaceSubscriptions(symbols: Set<String>)
+
+    fun acknowledged(): Set<String>
+
+    fun isConnected(): Boolean
+
     fun close()
 }
 
@@ -47,6 +54,7 @@ data class BrokerSession(
     val stream: MarketStream,
     val research: ResearchRepository,
     val groupExecutions: GroupExecutionSource? = null,
+    val currentPrices: CurrentPriceProvider? = null,
 )
 
 /** 객체 생성은 composition root로 위임한다. 응용 계층에서 NHPlug/Android 클래스를 생성하지 않는다. */
