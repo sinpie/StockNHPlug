@@ -2,6 +2,8 @@
 
 ## 2026-09-20 · 테스트 배포 준비
 
+- 커밋 `344ed2d`의 원격 CI 35476929222 성공. production ID 서명 거절 및 APK 정렬 검사 결과를 VERIFICATION에 추가했습니다. GitHub 릴리즈 공개는 보류 상태입니다.
+
 - Release 최적화 테스트본에 `.preview` ID/Preview 이름을 적용하는 명시적 빌드 속성 추가. Debug 이름도 구분합니다. 실제 주문 잠금은 유지합니다.
 - 외부 테스트 keystore 서명, APK ID/디버그 여부/서명 검사, SHA-256 생성 스크립트와 테스트 안내 추가.
 - 키 입력 위치와 지원 키(NHPlug·OpenDART), 자동주문·데이터 이용권한의 미완료 범위를 명시했습니다. 공개 여부와 실제 검증 결과는 VERIFICATION.md를 따릅니다.

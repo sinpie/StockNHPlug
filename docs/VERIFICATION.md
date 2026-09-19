@@ -2,6 +2,9 @@
 
 ## 2026-09-20 · APK 테스트 배포 준비
 
+- 구현 커밋 `344ed2daa38e059a8a67872d0a45fc7231c8c169`의 [GitHub Actions 35476929222](https://github.com/sinpie/StockNHPlug/actions/runs/35476929222): 성공. Ubuntu/JDK 17에서 JVM·린트·Debug APK·Release AAB·출처·계층 검사 통과. Actions Node 20/setup-java v4 폐기 예정 경고가 남아 있으며 실패로 숨기거나 보안 검토 완료로 간주하지 않습니다.
+- 패키징 도구에 기본 production ID APK를 넣는 거절 시험 통과: 서명/출력 디렉터리 생성 전에 중단. Preview Release의 `zipalign -c -P 16 4` 검사 통과.
+
 - `testDebugUnitTest lintDebug assembleDebug bundleRelease assembleRelease -PpreviewRelease=true`: 성공. JVM 82개 실패 0, 린트 오류 0/기존 버전 관련 경고 12개. Release는 R8 최적화이며 주문 잠금 유지.
 - 속성을 생략한 `bundleRelease assembleRelease`도 별도 성공했습니다. 기본 production ID 산출물은 서명되지 않았고 배포하지 않습니다.
 - API 30 disposable 에뮬레이터에서 `connectedDebugAndroidTest -PpreviewRelease=true`: 12개, 실패/건너뜀 0.
