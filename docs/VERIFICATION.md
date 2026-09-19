@@ -46,6 +46,8 @@ API/전략 교체 구조 변경 후 JVM 테스트 32개를 통과했습니다. �
 
 최종 로컬 명령 `testDebugUnitTest lintDebug assembleDebug bundleRelease connectedDebugAndroidTest`는 성공했습니다. Android 테스트 7개 모두 통과했으며, 새 brokerId의 암호화 저장/복원과 기존 NHPlug 저널의 이름공간 호환을 추가 확인했습니다. 변경된 AppContainer를 사용하는 UI 테스트도 통과했습니다.
 
+API/전략 교체 구현 커밋 `7571725f172df4d8725d719d1a2ce3a49b5d5c6b`의 [GitHub Actions 35448094156](https://github.com/sinpie/StockNHPlug/actions/runs/35448094156)도 성공했습니다. Ubuntu/JDK 17에서 단위 테스트·린트·Debug APK·Release AAB·출처 검사·계층 의존성 검사가 통과했습니다. Android 기기 테스트 7개는 이 CI가 아니라 위 로컬 API 30 에뮬레이터에서 실행한 결과입니다. 이후 검증 기록만 추가한 문서 커밋은 CI를 재실행하지 않습니다.
+
 실물 기기/다른 OS별 Keystore, 생체/기기 인증, API 31+ 오버레이 차단, API 34+ foreground specialUse, 제조사 절전, 실제 장중 API/WS, 부분체결/정정/취소/미확인 주문 대사, 휴장·시스템 시계 조작, 실제 토큰 재발급, 장기 실행, 거래비용 포함 전략 성과는 별도 검증이 필요합니다. UI 테스트는 인증 우회가 없는 별도 테스트 호스트에서 실행했으며 production MainActivity의 인증 성공을 검증한 것은 아닙니다. Google Play 정책 준수의 최종 확인과 NH/DART/뉴스 제공자의 배포·데이터 권한 검토는 자동 테스트로 대체할 수 없습니다.
 
 의존성 버전은 빌드 호환성이 확인된 조합으로 고정했습니다. 최신 버전 경고를 숨기지 않았고 최신 버전이라는 주장을 하지 않습니다. 출시 전 보안 공지와 의존성 업그레이드를 검토해야 합니다.
