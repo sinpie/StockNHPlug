@@ -8,7 +8,7 @@
         android:theme="@style/AppTheme" android:allowBackup="false"
         android:fullBackupContent="false" android:dataExtractionRules="@xml/data_extraction_rules"
         android:usesCleartextTraffic="false" android:supportsRtl="true">
-        <service android:name=".application.TradingService" android:exported="false" android:foregroundServiceType="specialUse" android:stopWithTask="true">
+        <service android:name=".platform.TradingService" android:exported="false" android:foregroundServiceType="specialUse" android:stopWithTask="true">
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="User-started bounded stock trading session: monitors market prices and places configured broker orders; ongoing notification provides immediate stop. No boot restart." />
         </service>
         <activity android:name=".MainActivity" android:exported="true" android:windowSoftInputMode="adjustResize">

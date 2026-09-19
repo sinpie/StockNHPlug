@@ -3,6 +3,7 @@
 ## Permanent user requirements
 - Kotlin Android application; Google Play publication is the intended destination.
 - Preserve application → trading → execution layering. Market/research providers are separate from execution.
+- API, market/research providers and strategy algorithms must be replaceable through explicit ports. Assemble concrete implementations only at AppContainer; strategy replacement must not bypass common risk/journal gates. Run scripts/check_architecture.py and maintain docs/EXTENDING.md when contracts change.
 - Keys/secrets must remain encrypted on the phone; transmit only to the issuing official API for authentication. Never put user keys in source, CI, logs, URLs shown to users, or backend services.
 - Data collection requires a reviewed official API/contract. Public visibility, robots.txt, and an accessible URL are not a license. No generic scraper or unofficial quote endpoint.
 - Every implementation/policy change updates the relevant Markdown documents and `docs/CHANGELOG.md`. Update `docs/ARCHITECTURE.md` when classes or ownership change, `docs/DATA_SOURCES.md` when a provider changes, `docs/SECURITY.md` for security changes, and `docs/VERIFICATION.md` for actual test outcomes.

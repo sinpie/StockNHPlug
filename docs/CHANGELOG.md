@@ -26,3 +26,12 @@
 - 계좌/환경/일자별 보유 스냅샷(최근 365개) 암호화 보관 추가. 계좌 변경 시 손익 초기화, 설정 변경 후 실시간 재연결 요구, 종료 중 데이터 삭제 경쟁 조건 방어.
 
 이후 변경 시 날짜·변경 이유·영향·검증 결과를 기록합니다. 출처 조건은 `DATA_SOURCES.md`, 구현 책임은 `ARCHITECTURE.md`에도 함께 반영합니다.
+
+## 2026-09-19 · API/전략 교체 구조 보강
+
+- AppContainer에 객체 조립을 집중하고 TradingController의 Android/저장/HTTP 구현 의존을 제거했습니다. ApplicationStorage, SessionFactory, BrokerSession, MarketStream을 추가했습니다.
+- 가격이력/기업자료 포트를 분리하고 NH 가격이력은 marketdata, 공통 전송기는 infrastructure/nh, DART 구현은 research/provider, Android 서비스는 platform으로 배치했습니다.
+- TradingStrategy/ExitPolicy와 기본 TechnicalStrategy/ThresholdExitPolicy를 추가해 추천·규모·청산 신호를 교체하되 공통 위험 검사를 유지했습니다.
+- 계좌 타입의 NH 전용 해석을 어댑터로 옮기고 brokerId 기반 주문/보유 기록 격리 및 기존 NHPlug 기록 호환을 추가했습니다.
+- 연구 공급자/청산 정책 교체와 증권사 혼용 방지 테스트를 추가했습니다. CI에 패키지 의존성 방향 검사를 연결하고 EXTENDING.md에 계약/제약/수정 절차를 정리했습니다. 실제 검증 결과는 VERIFICATION.md에 기록합니다.
+- 최종 로컬 검증: JVM 32개, Android 7개 통과. Debug APK/Release AAB 빌드, 린트 오류 0, 출처·의존성 경계 검사 통과. 실제 계좌와 최신 OS 검증은 미완료입니다.

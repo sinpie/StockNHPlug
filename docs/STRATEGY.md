@@ -27,3 +27,7 @@
 ## 아직 하지 않은 검증
 
 생존편향 없는 종목군, point-in-time 재무, 공시 접수 당시 자료, 수정주가/배당 보정, 실제 수수료/세금, 슬리피지, 거래정지/VI, 표본 외 walk-forward 검증을 결합한 성능 평가는 미수행입니다. 수익률·승률·Sharpe 수치를 만들어 표시하지 않습니다. 세션 손실 제한은 입출금 보정 없는 순자산 비교이므로 입출금이 있으면 재동기화 후 세션 재시작이 필요합니다.
+
+## 전략 교체 경계
+
+현재 기본 알고리즘은 TechnicalStrategy가 TradingStrategy를 구현해 조립합니다. 후보 평가는 SignalEngine, 청산 신호는 ThresholdExitPolicy, ATR에 따른 희망 예산은 TechnicalStrategy가 담당합니다. TradingEngine은 시세 검증·세션 고점·손실/예산/중복/사전저널을 유지합니다. 다른 전략은 AppContainer에서 빌드 시 교체하며 초과 희망 예산을 사용자 설정 이하로 제한합니다. 실행 중 원격 코드나 플러그인 교체는 지원하지 않습니다. 자세한 계약은 EXTENDING.md를 참조합니다.

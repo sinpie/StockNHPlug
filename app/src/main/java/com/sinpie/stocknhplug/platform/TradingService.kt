@@ -1,11 +1,13 @@
-package com.sinpie.stocknhplug.application
+package com.sinpie.stocknhplug.platform
 
 import android.app.*
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.*
+import com.sinpie.stocknhplug.AppContainer
 import com.sinpie.stocknhplug.MainActivity
 import com.sinpie.stocknhplug.R
+import com.sinpie.stocknhplug.application.TradingController
 import kotlinx.coroutines.*
 
 /** User-visible background session; OS process termination never restarts order placement. */
@@ -17,7 +19,7 @@ class TradingService : Service() {
     /** UI와 동일한 프로세스 컨트롤러를 연결한다. 새로운 별도 매매 엔진을 생성하지 않는다. */
     override fun onCreate() {
         super.onCreate()
-        controller = TradingController.get(this)
+        controller = AppContainer.get(this).controller
     }
 
     override fun onBind(intent: Intent?) = null

@@ -1,6 +1,7 @@
-package com.sinpie.stocknhplug.research
+package com.sinpie.stocknhplug.research.provider
 
-import com.sinpie.stocknhplug.execution.objects
+import com.sinpie.stocknhplug.infrastructure.json.objects
+import com.sinpie.stocknhplug.research.*
 import java.time.*
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.TimeUnit
@@ -10,7 +11,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.json.JSONObject
 
 /** Official OpenDART only. No HTML crawl, no article text, no third-party proxy. */
-class DartClient(private val apiKey: String) {
+class DartClient(private val apiKey: String) : CorporateResearchProvider {
     private val client =
         OkHttpClient.Builder()
             .followRedirects(false)
@@ -39,7 +40,11 @@ class DartClient(private val apiKey: String) {
         }
 
     /** 기간 내 전체 공시 페이지를 조회하고 접수번호로 중복을 제거한다. 과도한 결과는 범위 축소를 요구한다. */
-    suspend fun disclosures(corp: String, from: LocalDate, to: LocalDate): List<Disclosure> {
+    override suspend fun disclosures(
+        corp: String,
+        from: LocalDate,
+        to: LocalDate,
+    ): List<Disclosure> {
         require(corp.matches(Regex("[0-9]{8}")))
         val list = mutableListOf<Disclosure>()
         var page = 1
@@ -72,7 +77,7 @@ class DartClient(private val apiKey: String) {
     }
 
     /** 명시한 기간의 연결재무 표준 XBRL ID만 읽는다. 없는 항목/다른 계정명은 null로 유지한다. */
-    suspend fun financials(corp: String, year: Int, reportCode: String): FinancialReport? {
+    override suspend fun financials(corp: String, year: Int, reportCode: String): FinancialReport? {
         require(
             corp.matches(Regex("[0-9]{8}")) &&
                 year >= 2015 &&

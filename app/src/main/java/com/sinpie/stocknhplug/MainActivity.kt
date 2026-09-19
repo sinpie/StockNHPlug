@@ -11,6 +11,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.*
 import androidx.core.content.ContextCompat
 import com.sinpie.stocknhplug.application.*
+import com.sinpie.stocknhplug.platform.TradingService
 import com.sinpie.stocknhplug.ui.*
 
 /**
@@ -33,7 +34,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         if (Build.VERSION.SDK_INT >= 31) window.setHideOverlayWindows(true)
-        val controller = TradingController.get(this)
+        val controller = AppContainer.get(this).controller
         setContent {
             StockTheme {
                 if (!unlocked) LockScreen(::unlock)
@@ -74,7 +75,7 @@ class MainActivity : ComponentActivity() {
         try {
             ContextCompat.startForegroundService(this, Intent(this, TradingService::class.java))
         } catch (_: Exception) {
-            TradingController.get(this).stop("시스템에서 백그라운드 실행을 허용하지 않았습니다.")
+            AppContainer.get(this).controller.stop("시스템에서 백그라운드 실행을 허용하지 않았습니다.")
         }
     }
 

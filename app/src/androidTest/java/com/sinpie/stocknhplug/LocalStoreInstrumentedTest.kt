@@ -34,7 +34,7 @@ class LocalStoreInstrumentedTest {
 
     @After
     fun cleanup() {
-        // 共用 Keystore aliasは削除せず、このテストが作ったファイルだけを除去する。
+        // 공유 Keystore alias는 삭제하지 않고 이 테스트가 만든 파일만 제거한다.
         listOf("journal", "events", "snapshot").forEach(vault::delete)
         check(directory.delete())
     }
@@ -62,6 +62,30 @@ class LocalStoreInstrumentedTest {
     }
 
     @Test
+    fun legacyJournalKeepsNhplugNamespaceAndNewBrokerIdsRoundTrip() {
+        val intent =
+            OrderIntent(
+                "migration-test",
+                Environment.MOCK,
+                "test-account",
+                "005930",
+                Side.BUY,
+                1,
+                10000,
+                "test",
+                Instant.parse("2026-09-21T01:00:00Z"),
+                "other",
+            )
+        LocalStore(vault).reserve(intent)
+        assertEquals("other", LocalStore(vault).records().single().intent.brokerId)
+        val oldFormat = vault.read("journal")!!
+        oldFormat.getJSONArray("orders").getJSONObject(0).remove("broker")
+        vault.write("journal", oldFormat)
+        assertEquals("nhplug", LocalStore(vault).records().single().intent.brokerId)
+        assertEquals(OrderStatus.SUBMITTING, LocalStore(vault).records().single().status)
+    }
+
+    @Test
     fun invalidJournalSchemaCannotBecomeEmptyHistory() {
         vault.write("journal", JSONObject().put("orders", "invalid"))
         assertTrue(runCatching { LocalStore(vault) }.isFailure)
@@ -74,17 +98,22 @@ class LocalStoreInstrumentedTest {
         val store = LocalStore(vault)
         val at = Instant.parse("2026-09-21T01:00:00Z")
         val p = Portfolio(100, 100, 0, emptyList(), at)
-        val account = Account("test-one", "03")
+        val account = Account("test-one", Environment.MOCK, "nhplug")
         store.snapshot(account, Environment.MOCK, p)
         store.snapshot(account, Environment.MOCK, p.copy(cash = 200, at = at.plusSeconds(60)))
         store.snapshot(account.copy(number = "test-two"), Environment.MOCK, p)
         store.snapshot(account, Environment.LIVE, p)
+        store.snapshot(account.copy(brokerId = "other"), Environment.MOCK, p)
         val restored = LocalStore(vault).snapshots()
-        assertEquals(3, restored.size)
+        assertEquals(4, restored.size)
         assertEquals(
             200L,
             restored
-                .single { it.account == account.number && it.environment == Environment.MOCK }
+                .single {
+                    it.account == account.number &&
+                        it.environment == Environment.MOCK &&
+                        it.brokerId == "nhplug"
+                }
                 .portfolio
                 .cash,
         )

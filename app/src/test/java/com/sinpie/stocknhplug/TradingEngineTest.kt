@@ -9,7 +9,7 @@ import org.junit.Test
 
 class TradingEngineTest {
     private val now = Instant.parse("2026-09-21T01:00:00Z")
-    private val account = Account("12345678901", "03")
+    private val account = Account("12345678901", Environment.MOCK, "nhplug")
     private val portfolio = Portfolio(1_000_000, 1_000_000, 0, emptyList(), now)
     private val quote = Quote("005930", 10_000, 10_000, 10_010, now, now, true)
 
@@ -30,6 +30,7 @@ class TradingEngineTest {
     }
 
     private class FakeBroker : Broker {
+        override val id = "nhplug"
         override val environment = Environment.MOCK
         var sent = 0
         var fail = false
@@ -39,7 +40,7 @@ class TradingEngineTest {
 
         override suspend fun portfolio(account: Account): Portfolio = error("unused")
 
-        override suspend fun candles(symbol: String) = emptyList<Candle>()
+        override suspend fun dailyPnl(account: Account) = emptyList<DailyPnl>()
 
         override suspend fun available(account: Account, symbol: String, side: Side, price: Long) =
             100L
@@ -52,6 +53,86 @@ class TradingEngineTest {
         }
 
         override suspend fun executions(account: Account, date: LocalDate) = emptyList<Execution>()
+    }
+
+    @Test
+    fun replacementExitPolicyReceivesTrackingButCannotBypassRiskChecks() = runBlocking {
+        val b = FakeBroker()
+        var calls = 0
+        val custom = ExitPolicy { _, _, peak, _ ->
+            calls++
+            assertEquals(11000L, peak)
+            "custom exit"
+        }
+        val e = TradingEngine(b, Journal(), custom) { now }
+        val holding = Holding("005930", "name", 10, 10000, 11000, 0)
+        assertEquals("custom exit", e.exitReason(holding, quote, Strategy()))
+        assertEquals(1, calls)
+        assertNull(e.exitReason(holding, quote.copy(regular = false), Strategy()))
+        assertEquals(1, calls)
+        e.start(portfolio)
+        assertTrue(
+            runCatching {
+                    e.submit(
+                        account,
+                        portfolio.copy(holdings = listOf(holding)),
+                        quote,
+                        Side.SELL,
+                        "custom exit",
+                        Strategy(),
+                    )
+                }
+                .isFailure
+        )
+        assertEquals(0, b.sent)
+    }
+
+    @Test
+    fun differentBrokerAccountCannotDispatch() = runBlocking {
+        val b = FakeBroker()
+        val e = TradingEngine(b, Journal()) { now }
+        e.start(portfolio)
+        assertTrue(
+            runCatching {
+                    e.submit(
+                        account.copy(brokerId = "other"),
+                        portfolio,
+                        quote,
+                        Side.BUY,
+                        "test",
+                        Strategy(),
+                    )
+                }
+                .isFailure
+        )
+        assertEquals(0, b.sent)
+    }
+
+    @Test
+    fun anotherBrokersPendingOrderDoesNotMixWithThisBroker() = runBlocking {
+        val b = FakeBroker()
+        val j = Journal()
+        j.reserve(
+            OrderIntent(
+                "other-order",
+                Environment.MOCK,
+                account.number,
+                quote.symbol,
+                Side.BUY,
+                1,
+                10000,
+                "test",
+                now,
+                "other",
+            )
+        )
+        val e = TradingEngine(b, j) { now }
+        e.start(portfolio)
+        assertEquals(
+            OrderStatus.ACCEPTED,
+            e.submit(account, portfolio, quote, Side.BUY, "test", Strategy()).status,
+        )
+        assertEquals(1, b.sent)
     }
 
     @Test
@@ -229,7 +310,7 @@ class TradingEngineTest {
         assertTrue(
             runCatching {
                     e.submit(
-                        account.copy(type = "01"),
+                        account.copy(environment = Environment.LIVE),
                         portfolio,
                         quote,
                         Side.BUY,

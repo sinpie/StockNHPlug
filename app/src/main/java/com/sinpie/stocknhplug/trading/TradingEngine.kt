@@ -13,6 +13,7 @@ import kotlinx.coroutines.sync.withLock
 class TradingEngine(
     private val broker: Broker,
     private val journal: OrderJournal,
+    private val exitPolicy: ExitPolicy = ThresholdExitPolicy,
     private val now: () -> Instant = Instant::now,
 ) {
     private val mutex = Mutex()
@@ -48,14 +49,7 @@ class TradingEngine(
             return null
         val peak = max(highWater[holding.symbol] ?: holding.price, quote.price)
         highWater[holding.symbol] = peak
-        val change = (quote.price.toDouble() / holding.average - 1) * 100
-        return when {
-            change <= -settings.stopLossPercent -> "손절 조건"
-            change >= settings.takeProfitPercent -> "익절 조건"
-            peak > holding.average &&
-                (1 - quote.price.toDouble() / peak) * 100 >= settings.trailingPercent -> "추적 손절 조건"
-            else -> null
-        }
+        return exitPolicy.exitReason(holding, quote, peak, settings)
     }
 
     /**
@@ -73,7 +67,9 @@ class TradingEngine(
         mutex.withLock {
             settings.validate()
             check(running) { "자동매매가 정지되어 있습니다." }
-            check(account.validFor(broker.environment)) { "계좌와 거래 환경이 다릅니다." }
+            check(account.validFor(broker.environment) && account.brokerId == broker.id) {
+                "계좌와 증권사·거래 환경이 다릅니다."
+            }
             val instant = now()
             val local = instant.atZone(SEOUL)
             check(
@@ -103,7 +99,8 @@ class TradingEngine(
             }
             val records =
                 journal.records().filter {
-                    it.intent.account == account.number &&
+                    it.intent.brokerId == broker.id &&
+                        it.intent.account == account.number &&
                         it.intent.environment == broker.environment
                 }
             check(
@@ -161,6 +158,7 @@ class TradingEngine(
                     price,
                     reason,
                     now(),
+                    broker.id,
                 )
             check(journal.reserve(intent)) { "주문 기록 저장 실패" }
             try {

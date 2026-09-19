@@ -4,7 +4,6 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.platform.app.InstrumentationRegistry
-import com.sinpie.stocknhplug.application.TradingController
 import com.sinpie.stocknhplug.ui.*
 import java.io.File
 import org.junit.*
@@ -16,7 +15,7 @@ class UiInstrumentedTest {
     @Test
     fun navigationEmptyStatesAndPreview() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val controller = TradingController.get(context)
+        val controller = AppContainer.get(context).controller
         compose.setContent { StockTheme { StockApp(controller, {}, {}) } }
         compose.onNodeWithText("투자의 흐름을 한눈에").assertIsDisplayed()
         compose.onNodeWithText("모의 자동매매 시작").assertIsNotEnabled()

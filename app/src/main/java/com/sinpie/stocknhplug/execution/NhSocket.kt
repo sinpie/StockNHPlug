@@ -1,6 +1,9 @@
 package com.sinpie.stocknhplug.execution
 
+import com.sinpie.stocknhplug.application.MarketStream
 import com.sinpie.stocknhplug.domain.*
+import com.sinpie.stocknhplug.infrastructure.json.*
+import com.sinpie.stocknhplug.infrastructure.nh.NhTransport
 import java.time.*
 import java.time.format.DateTimeFormatter
 import okhttp3.*
@@ -14,12 +17,12 @@ class NhSocket(
     private val onQuote: (Quote) -> Unit,
     private val onEvent: (String) -> Unit,
     private val onDisconnect: () -> Unit,
-) {
+) : MarketStream {
     private var socket: WebSocket? = null
     @Volatile private var generation = 0
 
     /** 기존 연결 세대를 폐기하고 새 구독을 요청한다. 오래된 콜백은 generation으로 배제한다. */
-    suspend fun connect(symbols: List<String>) {
+    override suspend fun connect(symbols: List<String>) {
         close()
         require(symbols.size <= 10 && symbols.all { it.matches(Regex("[0-9]{6}")) })
         val token = transport.token()
@@ -97,7 +100,7 @@ class NhSocket(
     }
 
     /** 세대 번호를 먼저 변경하므로 의도적으로 닫은 소켓의 종료 콜백이 새 세션을 정지시키지 않는다. */
-    fun close() {
+    override fun close() {
         generation++
         socket?.close(1000, "session ended")
         socket = null

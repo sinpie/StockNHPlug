@@ -614,6 +614,11 @@ private fun HistoryScreen(s: AppState, pnl: () -> Unit) {
                     }
                     Text("${r.intent.quantity}주 × ${won(r.intent.limitPrice)}", fontSize = 16.sp)
                     Text(r.intent.reason, fontSize = 12.sp, color = Muted)
+                    Text(
+                        "${r.intent.brokerId} · •••• ${r.intent.account.takeLast(4)}",
+                        fontSize = 11.sp,
+                        color = Muted,
+                    )
                     Text(time(r.intent.at), fontSize = 11.sp, color = Muted)
                     if (r.status == OrderStatus.UNKNOWN || r.status == OrderStatus.SUBMITTING)
                         Text("증권사에서 확인 전 재주문 금지", color = Red, fontSize = 12.sp)
@@ -666,11 +671,16 @@ private fun HistoryScreen(s: AppState, pnl: () -> Unit) {
             if (s.snapshots.isEmpty()) Panel { Empty(Icons.Outlined.History, "저장된 보유 이력이 없습니다.") }
             s.snapshots
                 .reversed()
-                .filter { s.selected == null || it.account == s.selected.number }
+                .filter {
+                    s.selected == null ||
+                        (it.account == s.selected.number &&
+                            it.brokerId == s.selected.brokerId &&
+                            it.environment == s.selected.environment)
+                }
                 .forEach { item ->
                     Panel(time(item.portfolio.at)) {
                         Text(
-                            "모의 •••• ${item.account.takeLast(4)} · 순자산 ${won(item.portfolio.equity)}",
+                            "${item.brokerId} · ${if (item.environment == Environment.MOCK) "모의" else "운영"} •••• ${item.account.takeLast(4)} · 순자산 ${won(item.portfolio.equity)}",
                             fontSize = 12.sp,
                             color = Muted,
                         )

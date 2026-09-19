@@ -140,6 +140,9 @@ data class NewsItem(
 )
 
 interface NewsProvider {
+    /** 자동 분석 이용권한 검토가 완료된 구현만 true로 설정한다. 공개 URL은 권한 근거가 아니다. */
+    val licensedForAutomatedTrading: Boolean
+
     suspend fun latest(symbol: String): List<NewsItem>
 }
 
@@ -148,6 +151,8 @@ interface NewsProvider {
  * DATA_SOURCES.md.
  */
 class UnlicensedNewsProvider : NewsProvider {
+    override val licensedForAutomatedTrading = false
+
     override suspend fun latest(symbol: String): List<NewsItem> = emptyList()
 }
 

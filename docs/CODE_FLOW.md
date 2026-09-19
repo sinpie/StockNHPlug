@@ -35,7 +35,7 @@ flowchart TD
 
 `MainActivity.onStop`은 UI를 다시 잠급니다. Activity가 멈춰도 사용자가 시작한 서비스 세션은 유지될 수 있습니다. 서비스 정지 알림, `onTaskRemoved`, `onDestroy`는 컨트롤러 정지를 호출합니다. `START_NOT_STICKY`로 OS가 프로세스를 복구해 자동 주문하는 경로는 없습니다. 화면 인증 성공은 실제 기기의 별도 검증 대상입니다.
 
-`TradingController.get`은 applicationContext로 프로세스 단일 객체를 만듭니다. 초기화 시 암호화된 설정·주문·이벤트·스냅샷을 읽지만 키는 `AppState`에 넣지 않습니다. 저장소 읽기 실패는 `storageError`로 잠그며 빈 정상 저널로 대체하지 않습니다.
+`AppContainer.get`이 applicationContext로 프로세스 단일 조립 객체를 만들고 controller를 제공합니다. 컨트롤러는 저장소/세션 팩토리/전략 포트만 생성자로 받습니다. 초기화 시 암호화된 설정·주문·이벤트·스냅샷을 읽지만 키는 `AppState`에 넣지 않습니다. 저장소 읽기 실패는 `storageError`로 잠그며 빈 정상 저널로 대체하지 않습니다.
 
 ## 계좌 연결과 전환
 
@@ -49,6 +49,7 @@ sequenceDiagram
     participant W as NhSocket
     UI->>C: connect() → task
     C->>C: 기존 소켓 종료 / connected=false / 이전 계좌 표시 제거
+    C->>C: SessionFactory.create → Broker/Stream/Research 조립
     C->>B: accounts()
     B->>T: 공식 인증 및 계좌 API
     T-->>C: 모의계좌 목록
@@ -66,7 +67,7 @@ sequenceDiagram
 
 ## 리서치와 매수 판단
 
-`analyze` → 종목코드/기업고유번호 형식 검사 → `ResearchRepository.inspect` → `NhBroker.candles`, `DartClient.financials/disclosures`, `NewsProvider` → `ResearchEvidence`를 구성합니다. `SignalEngine.evaluate`는 완료 봉으로 지표와 점수를 계산합니다. UI의 점수가 높아도 `buyBlockers`가 비어 있지 않으면 매수할 수 없습니다.
+`analyze` → 종목코드/기업고유번호 형식 검사 → `ResearchRepository.inspect` → `PriceHistoryProvider.history`, `CorporateResearchProvider.financials/disclosures`, `NewsProvider` → `ResearchEvidence`를 구성합니다. `TradingStrategy.evaluate`가 후보를 평가하며 기본 TechnicalStrategy는 SignalEngine으로 지표와 점수를 계산합니다. UI의 점수가 높아도 `buyBlockers`가 비어 있지 않으면 매수할 수 없습니다.
 
 현재 일봉은 수정주가 보장이 없고 뉴스 이용권한도 미확정입니다. 이 두 조건은 의도적으로 신규 자동매수를 차단합니다. 테스트 데이터를 운영 근거로 채우거나 `adjusted`/`newsLicensed`만 바꾸어 활성화하면 안 됩니다. 새 공급자는 출처 계약, 공개시각, 기업 매핑, 수정계수 검증을 포함해 문서와 테스트를 함께 수정해야 합니다.
 
@@ -121,3 +122,5 @@ flowchart TD
 | 저장 포맷 | `LocalStore`, `SecureVault` | 이전 데이터 호환성/변조 테스트, SECURITY |
 
 의미 있는 변경 뒤 `./gradlew testDebugUnitTest lintDebug assembleDebug`와 `./gradlew bundleRelease`를 실행합니다. 기기 테스트는 폐기 가능한 설치에서만 수행합니다. 검증하지 못한 조건도 VERIFICATION에 적고 모든 정책/구현 변경은 CHANGELOG에 남깁니다.
+
+API와 전략의 구체적인 교체 계약 및 의존성 방향은 [EXTENDING.md](EXTENDING.md)를 참조합니다. Android 서비스는 platform, 공통 NH 전송기는 infrastructure/nh, 가격이력은 marketdata에 배치합니다.

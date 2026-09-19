@@ -1,6 +1,7 @@
 package com.sinpie.stocknhplug
 
 import com.sinpie.stocknhplug.execution.*
+import com.sinpie.stocknhplug.infrastructure.nh.ResponseGuard
 import java.time.Instant
 import org.json.JSONObject
 import org.junit.Assert.*

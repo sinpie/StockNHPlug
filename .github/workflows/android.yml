@@ -19,6 +19,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - run: chmod +x gradlew && ./gradlew testDebugUnitTest lintDebug assembleDebug bundleRelease
       - run: python3 scripts/audit_sources.py
+      - run: python3 scripts/check_architecture.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -23,9 +23,8 @@ enum class OrderStatus {
 }
 
 /** 계좌번호는 암호화 저장 대상으로만 사용한다. 화면에는 masked를 사용한다. */
-data class Account(val number: String, val type: String) {
-    fun validFor(env: Environment) =
-        if (env == Environment.MOCK) type == "03" else type in setOf("01", "02")
+data class Account(val number: String, val environment: Environment, val brokerId: String) {
+    fun validFor(env: Environment) = environment == env
 
     val masked
         get() = "•••• " + number.takeLast(4)
@@ -130,6 +129,7 @@ data class OrderIntent(
     val limitPrice: Long,
     val reason: String,
     val at: Instant,
+    val brokerId: String = "nhplug",
 )
 
 data class OrderRecord(
@@ -146,17 +146,18 @@ data class HoldingSnapshot(
     val account: String,
     val environment: Environment,
     val portfolio: Portfolio,
+    val brokerId: String = "nhplug",
 )
 
 /** 매매 계층의 실행 포트. REST 필드나 인증 방법을 위 계층에 노출하지 않는다. */
 interface Broker {
+    /** 기록 이름공간으로 사용하는 안정적 ID. 화면 표시명이나 계좌번호와 구분한다. */
+    val id: String
     val environment: Environment
 
     suspend fun accounts(): List<Account>
 
     suspend fun portfolio(account: Account): Portfolio
-
-    suspend fun candles(symbol: String): List<Candle>
 
     suspend fun available(account: Account, symbol: String, side: Side, price: Long): Long
 
@@ -164,6 +165,8 @@ interface Broker {
     suspend fun place(account: Account, intent: OrderIntent): String
 
     suspend fun executions(account: Account, date: LocalDate): List<Execution>
+
+    suspend fun dailyPnl(account: Account): List<DailyPnl>
 }
 
 data class Execution(

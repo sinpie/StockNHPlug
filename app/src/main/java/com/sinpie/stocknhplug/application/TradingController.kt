@@ -1,9 +1,6 @@
 package com.sinpie.stocknhplug.application
 
-import android.content.Context
-import com.sinpie.stocknhplug.data.*
 import com.sinpie.stocknhplug.domain.*
-import com.sinpie.stocknhplug.execution.*
 import com.sinpie.stocknhplug.research.*
 import com.sinpie.stocknhplug.trading.TradingEngine
 import java.time.*
@@ -34,27 +31,29 @@ data class AppState(
 )
 
 /** Application layer owns orchestration, never endpoint fields or order price math. */
-class TradingController(context: Context) {
+class TradingController(
+    private val store: ApplicationStorage,
+    private val sessionFactory: SessionFactory,
+    private val strategy: TradingStrategy,
+) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    val vault = SecureVault(context)
-    private var store: LocalStore? = null
-    private var broker: NhBroker? = null
-    private var socket: NhSocket? = null
+    private var broker: Broker? = null
+    private var socket: MarketStream? = null
     private var engine: TradingEngine? = null
     private var loop: Job? = null
+    private var researchRepository: ResearchRepository? = null
     private val mutable = MutableStateFlow(AppState())
     val state: StateFlow<AppState> = mutable
 
     init {
         try {
-            store = LocalStore(vault)
             mutable.value =
                 mutable.value.copy(
-                    settings = store!!.settings(),
-                    orders = store!!.records(),
-                    events = store!!.events.toList(),
-                    snapshots = store!!.snapshots(),
-                    hasCredentials = vault.read("credentials") != null,
+                    settings = store.settings(),
+                    orders = store.records(),
+                    events = store.events(),
+                    snapshots = store.snapshots(),
+                    hasCredentials = store.hasCredentials(),
                 )
         } catch (_: Exception) {
             mutable.value =
@@ -73,14 +72,8 @@ class TradingController(context: Context) {
     /** 통제된 앱 메시지만 저장한다. 저장 실패는 거래 잠금이며 원시 예외/HTTP 본문을 전달하지 않는다. */
     private fun log(message: String, level: String = "INFO") {
         try {
-            store?.log(level, message)
-            change {
-                it.copy(
-                    events = store?.events?.toList().orEmpty(),
-                    orders = store?.records().orEmpty(),
-                    message = message,
-                )
-            }
+            store.log(level, message)
+            change { it.copy(events = store.events(), orders = store.records(), message = message) }
         } catch (_: Exception) {
             engine?.stop()
             change { it.copy(running = false, storageError = true, message = "기록 저장 실패 · 자동매매 잠금") }
@@ -91,14 +84,11 @@ class TradingController(context: Context) {
     fun saveCredentials(key: String, secret: String, dart: String) = task {
         check(!state.value.running)
         require(key.isNotBlank() && secret.isNotBlank())
-        vault.write(
-            "credentials",
-            json("key" to key.trim(), "secret" to secret.trim(), "dart" to dart.trim()),
-        )
-        vault.delete("token")
+        store.saveCredentials(key, secret, dart)
         socket?.close()
         broker = null
         engine = null
+        researchRepository = null
         change {
             it.copy(
                 hasCredentials = true,
@@ -119,7 +109,7 @@ class TradingController(context: Context) {
     /** 전략 검증과 암호화 저장 후 구독을 해제한다. 새 종목 목록은 명시적 재연결 때 적용된다. */
     fun saveSettings(settings: Strategy) = task {
         check(!state.value.running)
-        store!!.saveSettings(settings)
+        store.saveSettings(settings)
         socket?.close()
         change {
             it.copy(
@@ -148,15 +138,8 @@ class TradingController(context: Context) {
                 quotes = emptyMap(),
             )
         }
-        val transport = NhTransport(vault, Environment.MOCK)
-        broker = NhBroker(transport)
-        engine = TradingEngine(broker!!, store!!)
-        val accounts = broker!!.accounts()
-        check(accounts.isNotEmpty()) { "모의투자 계좌가 없습니다. NHPlug 신청 상태를 확인하세요." }
-        change { it.copy(accounts = accounts, selected = accounts.first(), quotes = emptyMap()) }
-        socket =
-            NhSocket(
-                transport,
+        val session =
+            sessionFactory.create(
                 { quote ->
                     scope.launch {
                         change { it.copy(quotes = it.quotes + (quote.symbol to quote)) }
@@ -170,10 +153,25 @@ class TradingController(context: Context) {
                     }
                 },
             )
+        broker = session.broker
+        check(session.broker.environment == Environment.MOCK) { "현재 배포 구성은 모의 거래만 허용합니다." }
+        socket = session.stream
+        researchRepository = session.research
+        engine = TradingEngine(session.broker, store, strategy)
+        val accounts = session.broker.accounts()
+        check(
+            accounts.isNotEmpty() &&
+                accounts.all {
+                    it.brokerId == session.broker.id && it.validFor(session.broker.environment)
+                }
+        ) {
+            "사용 가능한 계좌가 없습니다. API 신청 상태를 확인하세요."
+        }
+        change { it.copy(accounts = accounts, selected = accounts.first(), quotes = emptyMap()) }
         refreshInternal()
         subscribeSelectedAccount()
         change { it.copy(connected = true) }
-        log("NHPlug 모의투자 연결 완료 · ${accounts.size}개 계좌")
+        log("모의투자 연결 완료 · ${accounts.size}개 계좌")
     }
 
     /** 계좌 선택 진입점. 이전 계좌의 가격과 손익을 지우고 새 계좌의 보유종목을 다시 구독한다. */
@@ -209,13 +207,13 @@ class TradingController(context: Context) {
         val account = state.value.selected ?: error("계좌를 먼저 연결하세요.")
         val portfolio = broker!!.portfolio(account)
         val executions = broker!!.executions(account, LocalDate.now(SEOUL))
-        withContext(Dispatchers.IO) { store!!.snapshot(account, Environment.MOCK, portfolio) }
+        withContext(Dispatchers.IO) { store.snapshot(account, Environment.MOCK, portfolio) }
         change {
             it.copy(
                 portfolio = portfolio,
                 executions = executions,
-                orders = store!!.records(),
-                snapshots = store!!.snapshots(),
+                orders = store.records(),
+                snapshots = store.snapshots(),
             )
         }
     }
@@ -237,7 +235,7 @@ class TradingController(context: Context) {
     /** 종목-기업 매핑을 검증하고 공식 데이터와 지표를 조합한다. 점수 계산은 매수 승인과 별개다. */
     fun analyze(corpMapping: String, year: Int, reportCode: String) = task {
         check(!state.value.running)
-        val b = broker ?: error("계좌를 먼저 연결하세요.")
+        val repository = researchRepository ?: error("계좌를 먼저 연결하세요.")
         val mapping =
             corpMapping
                 .split(',', '\n')
@@ -253,15 +251,12 @@ class TradingController(context: Context) {
                     }
                     parts[0] to parts[1]
                 }
-        val dartKey = vault.read("credentials")?.optString("dart").orEmpty()
-        val repository =
-            ResearchRepository(b, if (dartKey.isNotBlank()) DartClient(dartKey) else null)
         val evidence = mutableListOf<ResearchEvidence>()
         val candidates = mutableListOf<Candidate>()
         for (symbol in state.value.settings.symbols) {
             val item = repository.inspect(symbol, mapping[symbol], year, reportCode)
             evidence += item
-            SignalEngine.evaluate(symbol, item.prices!!.candles, LocalDate.now(SEOUL))?.let {
+            strategy.evaluate(symbol, item.prices!!.candles, LocalDate.now(SEOUL))?.let {
                 candidates += it
             }
             change {
@@ -285,8 +280,9 @@ class TradingController(context: Context) {
         }
         check(!s.running)
         check(
-            store!!.records().none {
-                it.intent.account == s.selected?.number &&
+            store.records().none {
+                it.intent.brokerId == s.selected?.brokerId &&
+                    it.intent.account == s.selected?.number &&
                     it.intent.environment == Environment.MOCK &&
                     it.status in setOf(OrderStatus.UNKNOWN, OrderStatus.SUBMITTING)
             }
@@ -331,16 +327,11 @@ class TradingController(context: Context) {
                             )
                                 continue
                             val quote = state.value.quotes[candidate.symbol] ?: continue
-                            // Volatility reduces capital exposure rather than claiming predictive
-                            // accuracy.
-                            val factor =
-                                (2.0 / candidate.atrPercent.coerceAtLeast(2.0)).coerceAtMost(1.0)
+                            val proposedBudget = strategy.orderBudget(candidate, settings)
+                            if (proposedBudget < 10_000) continue
                             val sized =
                                 settings.copy(
-                                    orderBudget =
-                                        (settings.orderBudget * factor)
-                                            .toLong()
-                                            .coerceAtLeast(10_000)
+                                    orderBudget = proposedBudget.coerceAtMost(settings.orderBudget)
                                 )
                             engine!!.submit(
                                 current.selected!!,
@@ -366,8 +357,9 @@ class TradingController(context: Context) {
 
     /** 불필요한 반복 주문 시도를 줄이는 응용 계층 필터. 최종 원자적 중복 방지는 TradingEngine에서 다시 수행한다. */
     private fun alreadyOrdered(symbol: String, side: Side) =
-        store!!.records().any {
-            it.intent.account == state.value.selected?.number &&
+        store.records().any {
+            it.intent.brokerId == state.value.selected?.brokerId &&
+                it.intent.account == state.value.selected?.number &&
                 it.intent.symbol == symbol &&
                 it.intent.side == side &&
                 it.intent.at.atZone(SEOUL).toLocalDate() == LocalDate.now(SEOUL)
@@ -391,10 +383,10 @@ class TradingController(context: Context) {
         stop()
         socket?.close()
         scope.coroutineContext.cancelChildren()
-        vault.deleteAll()
-        store = LocalStore(vault)
+        store.clear()
         broker = null
         engine = null
+        researchRepository = null
         change { AppState(message = "기기 내 키와 기록을 삭제했습니다. 증권사 기록은 유지됩니다.") }
     }
 
@@ -419,16 +411,5 @@ class TradingController(context: Context) {
                 change { it.copy(busy = !it.running && loop?.isCompleted == false) }
             }
         }
-    }
-
-    companion object {
-        @Volatile private var instance: TradingController? = null
-
-        /** Activity와 Service가 공유하는 프로세스 단일 인스턴스. applicationContext만 유지한다. */
-        fun get(context: Context): TradingController =
-            instance
-                ?: synchronized(this) {
-                    instance ?: TradingController(context.applicationContext).also { instance = it }
-                }
     }
 }

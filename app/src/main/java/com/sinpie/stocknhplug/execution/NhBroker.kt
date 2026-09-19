@@ -2,18 +2,15 @@ package com.sinpie.stocknhplug.execution
 
 import com.sinpie.stocknhplug.BuildConfig
 import com.sinpie.stocknhplug.domain.*
+import com.sinpie.stocknhplug.infrastructure.json.*
+import com.sinpie.stocknhplug.infrastructure.nh.NhTransport
 import java.time.*
 import java.time.format.DateTimeFormatter
-import org.json.JSONArray
 import org.json.JSONObject
-
-fun json(vararg pairs: Pair<String, Any>) =
-    JSONObject().apply { pairs.forEach { put(it.first, it.second) } }
-
-fun JSONArray.objects(): List<JSONObject> = (0 until length()).map { getJSONObject(it) }
 
 /** Broker 포트의 NHPlug 구현. 전문 필드 변환을 이 클래스 안에 가두어 매매 계층이 API 필드명을 몰라도 되게 한다. */
 class NhBroker(private val transport: NhTransport) : Broker {
+    override val id = "nhplug"
     override val environment = transport.environment
 
     /** 명세의 acct_type을 이용해 현재 거래 환경에 맞는 계좌만 반환한다. */
@@ -23,12 +20,15 @@ class NhBroker(private val transport: NhTransport) : Broker {
             .optJSONArray("Output_0")
             ?.objects()
             .orEmpty()
-            .map { Account(it.getString("acct_no"), it.getString("acct_type")) }
-            .filter { it.validFor(environment) }
+            .filter {
+                if (environment == Environment.MOCK) it.getString("acct_type") == "03"
+                else it.getString("acct_type") in setOf("01", "02")
+            }
+            .map { Account(it.getString("acct_no"), environment, id) }
 
     /** 모든 잔고 페이지를 받은 뒤 집계한다. 여러 세금/신용 lot는 표시용으로 합산한다. */
     override suspend fun portfolio(account: Account): Portfolio {
-        require(account.validFor(environment))
+        require(account.validFor(environment) && account.brokerId == id)
         val pages =
             transport.pages(
                 "/krstock/inquiry/v1/balance",
@@ -82,39 +82,6 @@ class NhBroker(private val transport: NhTransport) : Broker {
         )
     }
 
-    /** 전일까지 일봉을 조회해 시간순으로 반환한다. 수정주가라는 보장은 여기서 만들지 않는다. */
-    override suspend fun candles(symbol: String): List<Candle> {
-        val today = LocalDate.now(SEOUL)
-        val j =
-            transport.call(
-                "/krstock/quote/v1/period",
-                json(
-                    "market_cd" to "KRX",
-                    "iem_cd" to symbol,
-                    "view_main_yn" to "Y",
-                    "edate" to today.minusDays(1).format(DateTimeFormatter.BASIC_ISO_DATE),
-                    "array_cnt" to "250",
-                    "gubun" to "1",
-                    "out1_scale_change" to "0",
-                    "out2_scale_change" to "0",
-                ),
-            )
-        return j.getJSONArray("Output_1")
-            .objects()
-            .map { c ->
-                // The published spec does not guarantee a total-return adjustment basis. Research
-                // layer records this explicitly.
-                Candle(
-                    LocalDate.parse(c.getString("bsop_date"), DateTimeFormatter.BASIC_ISO_DATE),
-                    c.getDouble("stck_prpr"),
-                    c.getDouble("stck_hgpr"),
-                    c.getDouble("stck_lwpr"),
-                    c.getDouble("vol"),
-                )
-            }
-            .sortedBy { it.date }
-    }
-
     /** 매수는 미수 없는 현금 가능수량, 매도는 현금 매도 가능수량을 사용한다. */
     override suspend fun available(
         account: Account,
@@ -153,7 +120,9 @@ class NhBroker(private val transport: NhTransport) : Broker {
         require(
             account.validFor(environment) &&
                 intent.environment == environment &&
-                intent.account == account.number
+                intent.account == account.number &&
+                account.brokerId == id &&
+                intent.brokerId == id
         )
         require(intent.quantity > 0 && intent.limitPrice > 0)
         val j =
@@ -210,7 +179,7 @@ class NhBroker(private val transport: NhTransport) : Broker {
             }
 
     /** 최근 30일 계좌 손익을 일자순으로 반환한다. 수수료/세금은 중복 차감하지 않고 원천값을 보존한다. */
-    suspend fun dailyPnl(account: Account): List<DailyPnl> {
+    override suspend fun dailyPnl(account: Account): List<DailyPnl> {
         val today = LocalDate.now(SEOUL)
         return transport
             .pages(

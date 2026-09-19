@@ -34,3 +34,7 @@
 - 실제 테스트 키로 API 통합 테스트하되 키/계좌/로그를 CI artifact로 업로드하지 않음.
 - 서명키는 소스와 분리하고 Play App Signing 이용. API 키와 앱 서명키를 혼동하지 않음.
 - [Android 보안 활동 안내](https://developer.android.com/security/fraud-prevention/activities), [OWASP 오버레이 위협](https://mas.owasp.org/MASTG/knowledge/android/MASVS-PLATFORM/MASTG-KNOW-0022/) 기준 재검토.
+
+## 교체 가능한 계층의 보안 경계
+
+TradingController/UI에서 SecureVault와 HTTP 구현 접근을 제거했습니다. ApplicationStorage는 키 쓰기와 존재 확인만 제공하고 키 읽기는 제공하지 않습니다. AppContainer와 발급자 어댑터가 필요한 인증정보를 내부에서 사용합니다. 전략에는 네트워크/저널 객체를 전달하지 않고 공통 안전 엔진을 유지합니다. 브로커 교체 시 기록은 brokerId/계좌/환경으로 구분하며 기존 필드 미포함 NHPlug 기록은 nhplug 이름공간으로 읽습니다. 이 변경은 실거래 잠금을 해제하지 않습니다.

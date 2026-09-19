@@ -18,19 +18,22 @@ Kotlin / Jetpack Compose 기반 NHPlug 국내주식 자동매매 앱입니다. �
 
 ```mermaid
 flowchart TB
- UI[Compose UI / 기기 인증] --> APP[응용: TradingController / SignalEngine]
+ ROOT[AppContainer / 포트 구현 조립] --> APP[응용: TradingController]
+ UI[Compose UI / 기기 인증] --> APP
+ APP --> STRATEGY[TradingStrategy / 교체 가능한 전략]
  APP --> RESEARCH[ResearchRepository / 데이터 사용권한·품질 검증]
  RESEARCH --> DART[OpenDART 공식 API]
  RESEARCH --> PRICE[일봉 / 수정주가 변환 / 뉴스 Provider]
  APP --> TRADE[매매: TradingEngine / 가격 추적·위험 한도]
  TRADE --> PORT[Broker / OrderJournal 인터페이스]
- PORT --> EXEC[실제 매매: NhBroker / NhTransport / NhSocket]
+ PORT --> EXEC[실제 매매: NhBroker / NhSocket]
  EXEC --> NH[NHPlug REST / WebSocket]
  PORT --> LOCAL[LocalStore / SecureVault / Android Keystore]
 ```
 
 ## 문서
 
+- [API·데이터·전략 교체 안내](docs/EXTENDING.md)
 - [계층 및 클래스 상세](docs/ARCHITECTURE.md)
 - [진입점·함수 흐름도·코드 수정 안내](docs/CODE_FLOW.md)
 - [데이터 출처·이용조건·보관 방침](docs/DATA_SOURCES.md)

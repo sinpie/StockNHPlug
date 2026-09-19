@@ -26,6 +26,7 @@ class LocalStore(private val vault: SecureVault) : OrderJournal {
                             j.getLong("price"),
                             j.getString("reason"),
                             Instant.parse(j.getString("at")),
+                            j.optString("broker", "nhplug"),
                         ),
                         OrderStatus.valueOf(j.getString("status")),
                         j.optString("number"),
@@ -106,6 +107,7 @@ class LocalStore(private val vault: SecureVault) : OrderJournal {
                             val i = r.intent
                             JSONObject()
                                 .put("id", i.id)
+                                .put("broker", i.brokerId)
                                 .put("env", i.environment.name)
                                 .put("account", i.account)
                                 .put("symbol", i.symbol)
@@ -187,6 +189,7 @@ class LocalStore(private val vault: SecureVault) : OrderJournal {
                     },
                     Instant.parse(j.getString("at")),
                 ),
+                j.optString("broker", "nhplug"),
             )
         }
     }
@@ -197,10 +200,11 @@ class LocalStore(private val vault: SecureVault) : OrderJournal {
         val today = portfolio.at.atZone(SEOUL).toLocalDate()
         val items =
             (snapshots().filterNot {
-                    it.account == account.number &&
+                    it.brokerId == account.brokerId &&
+                        it.account == account.number &&
                         it.environment == environment &&
                         it.portfolio.at.atZone(SEOUL).toLocalDate() == today
-                } + HoldingSnapshot(account.number, environment, portfolio))
+                } + HoldingSnapshot(account.number, environment, portfolio, account.brokerId))
                 .takeLast(365)
         vault.write(
             "snapshot",
@@ -212,6 +216,7 @@ class LocalStore(private val vault: SecureVault) : OrderJournal {
                             val p = s.portfolio
                             JSONObject()
                                 .put("account", s.account)
+                                .put("broker", s.brokerId)
                                 .put("env", s.environment.name)
                                 .put("at", p.at.toString())
                                 .put("cash", p.cash)
