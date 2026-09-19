@@ -145,6 +145,135 @@ class GroupCoordinatorTest {
     }
 
     @Test
+    fun staleStrategyQuoteCannotBeMisreadAsIdleCash() = runBlocking {
+        val store = MemoryStore()
+        store.book = store.book.copy(parking = ParkingPolicy(true, "005940"))
+        val broker = FakeBroker()
+        val engine = TradingEngine(broker, store) { now }.also { it.start(portfolio) }
+        val coordinator =
+            GroupTradingCoordinator(store, source, GroupAlgorithmRegistry.defaults(), engine)
+        val q = quote.copy(symbol = "005940")
+        val e =
+            evidence().let {
+                it.copy(symbol = q.symbol, prices = it.prices!!.copy(symbol = q.symbol))
+            }
+        assertNull(
+            coordinator.tick(
+                account,
+                portfolio,
+                mapOf(q.symbol to q),
+                listOf(e),
+                Strategy(manageHoldings = true),
+                now,
+            )
+        )
+        assertEquals(0, broker.sent)
+    }
+
+    @Test
+    fun parkingSaleWaitsForTerminalFillAndUpdatedCashBeforeStrategyBuy() = runBlocking {
+        val store = MemoryStore()
+        store.book = store.book.copy(parking = ParkingPolicy(true, "005940"))
+        val seed =
+            OrderIntent(
+                "seed",
+                Environment.MOCK,
+                account.number,
+                "005940",
+                Side.BUY,
+                100,
+                10000,
+                "test",
+                now.minusSeconds(600),
+                account.brokerId,
+                ParkingPolicy.STRATEGY_ID,
+                ParkingPolicy.GROUP_ID,
+                "parking:0",
+            )
+        // 전일 취득분은 오늘의 공통 매수 예산을 소비하지 않는다.
+        store.orders +=
+            OrderRecord(
+                seed.copy(at = now.minusSeconds(86400)),
+                OrderStatus.ACCEPTED,
+                "seed-broker",
+            )
+        store.fills =
+            listOf(GroupFillReport(seed.id, 100, 1_000_000, 0, true, now.minusSeconds(600)))
+        val p =
+            portfolio.copy(
+                cash = 50_000,
+                equity = 1_050_000,
+                holdings = listOf(Holding("005940", "test", 100, 10000, 10000, 0)),
+            )
+        val parkingQuote = quote.copy(symbol = "005940", ask = 10000)
+        val quotes = mapOf(quote.symbol to quote, parkingQuote.symbol to parkingQuote)
+        val broker = FakeBroker()
+        val engine = TradingEngine(broker, store) { now }.also { it.start(p) }
+        val coordinator =
+            GroupTradingCoordinator(store, source, GroupAlgorithmRegistry.defaults(), engine)
+        val limits = Strategy(manageHoldings = true)
+        val sale = coordinator.tick(account, p, quotes, listOf(evidence()), limits, now)!!
+        assertEquals(ParkingPolicy.GROUP_ID, sale.intent.groupId)
+        assertEquals(Side.SELL, sale.intent.side)
+        assertNull(coordinator.tick(account, p, quotes, listOf(evidence()), limits, now))
+        store.fills =
+            store.fills +
+                GroupFillReport(
+                    sale.intent.id,
+                    sale.intent.quantity,
+                    sale.intent.quantity * 10000,
+                    1000,
+                    true,
+                    now,
+                )
+        // 체결 확인만 있고 잔고 현금이 아직 증가하지 않았으면 전략 주문은 나가지 않는다.
+        assertNull(coordinator.tick(account, p, quotes, listOf(evidence()), limits, now))
+        assertEquals(1, broker.sent)
+        val funded =
+            p.copy(cash = 149_000, holdings = listOf(p.holdings.single().copy(quantity = 90)))
+        val buy = coordinator.tick(account, funded, quotes, listOf(evidence()), limits, now)!!
+        assertEquals("g1", buy.intent.groupId)
+        assertEquals(Side.BUY, buy.intent.side)
+        assertEquals(2, broker.sent)
+    }
+
+    @Test
+    fun idleParkingBuyStillRequiresResearchEvidence() = runBlocking {
+        val store = MemoryStore()
+        store.book = store.book.copy(groups = emptyList(), parking = ParkingPolicy(true, "005940"))
+        val broker = FakeBroker()
+        val engine = TradingEngine(broker, store) { now }.also { it.start(portfolio) }
+        val coordinator =
+            GroupTradingCoordinator(store, source, GroupAlgorithmRegistry.defaults(), engine)
+        val q = quote.copy(symbol = "005940")
+        assertNull(
+            coordinator.tick(
+                account,
+                portfolio,
+                mapOf(q.symbol to q),
+                emptyList(),
+                Strategy(manageHoldings = true),
+                now,
+            )
+        )
+        val e =
+            evidence().let {
+                it.copy(symbol = q.symbol, prices = it.prices!!.copy(symbol = q.symbol))
+            }
+        val buy =
+            coordinator.tick(
+                account,
+                portfolio,
+                mapOf(q.symbol to q),
+                listOf(e),
+                Strategy(manageHoldings = true),
+                now,
+            )!!
+        assertEquals(ParkingPolicy.GROUP_ID, buy.intent.groupId)
+        assertEquals(Side.BUY, buy.intent.side)
+    }
+
+    @Test
     fun absentReconciliationCapabilityBlocksBeforeOrder() = runBlocking {
         val store = MemoryStore()
         val broker = FakeBroker()

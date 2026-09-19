@@ -327,7 +327,7 @@ private fun Dashboard(
             color = Muted,
             fontSize = 13.sp,
         )
-        Text("평일 09:05–15:15 · 현금 지정가 IOC · 하루 종목별 1회", fontSize = 11.sp, color = Muted)
+        Text("평일 09:05–15:15 · 현금 지정가 IOC · 파킹은 별도 회차 한도", fontSize = 11.sp, color = Muted)
         Button(
             if (s.running) stop else start,
             Modifier.fillMaxWidth().heightIn(min = 48.dp),
@@ -336,9 +336,10 @@ private fun Dashboard(
                     s.groupExecutionReady &&
                     !s.busy &&
                     !s.storageError &&
-                    s.book.groups.any { g ->
-                        g.enabled && s.book.plans.any { p -> p.id == g.strategyId && p.enabled }
-                    },
+                    (s.book.parking.enabled ||
+                        s.book.groups.any { g ->
+                            g.enabled && s.book.plans.any { p -> p.id == g.strategyId && p.enabled }
+                        }),
         ) {
             Text(if (s.running) "자동매매 정지" else "모의 자동매매 시작")
         }
@@ -612,7 +613,9 @@ private fun HistoryScreen(s: AppState, pnl: () -> Unit) {
                     Text(r.intent.reason, fontSize = 12.sp, color = Muted)
                     if (r.intent.groupId.isNotBlank())
                         Text(
-                            "${s.book.plans.find { it.id == r.intent.strategyId }?.name ?: r.intent.strategyId} / ${s.book.groups.find { it.id == r.intent.groupId }?.name ?: r.intent.groupId}",
+                            if (r.intent.groupId == ParkingPolicy.GROUP_ID) "현금 관리 / 파킹"
+                            else
+                                "${s.book.plans.find { it.id == r.intent.strategyId }?.name ?: r.intent.strategyId} / ${s.book.groups.find { it.id == r.intent.groupId }?.name ?: r.intent.groupId}",
                             fontSize = 12.sp,
                             color = Teal,
                         )

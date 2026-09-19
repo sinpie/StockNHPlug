@@ -47,3 +47,10 @@
 - [ ] 장시간 실행의 배터리·열·토큰 만료·거래일 전환 확인
 
 Android의 dataSync 6시간 제한을 회피하기 위한 타입 변경이 아닙니다. 기존 specialUse의 사용자 요청 매매 기능에 대해 심사 적합성을 별도 확인해야 합니다. [FGS 유형](https://developer.android.com/develop/background-work/services/fgs/service-types), [Play 요구사항](https://support.google.com/googleplay/android-developer/answer/13392821?hl=en), [Doze 제한](https://developer.android.com/training/monitoring-device-state/doze-standby)을 2026-09-19 확인했습니다. Doze는 네트워크/CPU 실행을 지연할 수 있으므로 휴대폰만으로 무중단 주문을 보장하지 않습니다.
+
+## 파킹 출시 게이트
+- [ ] 공식 주문/체결 대응 및 파킹 부분체결·미체결·현금 반영 시점 검증
+- [ ] 주문가능 금액/결제일/수수료·세금 차이 검증
+- [ ] 파킹 상품별 공식 데이터 적격성 검증 (ETF 포함)
+- [ ] 실제 타겟 가격 추적·나무매직 참조와 라이선스 검토
+- [ ] 장시간 매수↔매도 순환/일 한도/서비스 재시작 저널 검증

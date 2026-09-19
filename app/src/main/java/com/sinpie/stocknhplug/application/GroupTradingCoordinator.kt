@@ -24,7 +24,9 @@ class GroupTradingCoordinator(
         require(incoming.all { r -> scoped.any { it.intent.id == r.orderId } })
         val merged = GroupLedger.merge(orders, store.groupFills(), incoming)
         // 원장 계산까지 검증한 후 암호화 저장한다. 메모리에서만 체결을 반영하지 않는다.
-        store.strategyBook().groups.forEach { GroupLedger.positions(it, account, orders, merged) }
+        store.strategyBook().ledgerGroups().forEach {
+            GroupLedger.positions(it, account, orders, merged)
+        }
         store.saveGroupFills(merged)
     }
 
@@ -45,7 +47,19 @@ class GroupTradingCoordinator(
             book.groups.filter {
                 it.enabled && book.plans.any { p -> p.id == it.strategyId && p.enabled }
             }
-        val allPositions = book.groups.flatMap { GroupLedger.positions(it, account, orders, fills) }
+        // 판단하지 못한 전략을 '주문 없음'으로 간주해 현금을 먼저 파킹하지 않는다.
+        if (
+            enabled
+                .flatMap { it.symbols }
+                .any { item ->
+                    quotes[item.symbol]?.let {
+                        it.regular && it.fresh(now) && it.bid > 0 && it.ask >= it.bid
+                    } != true
+                }
+        )
+            return null
+        val allPositions =
+            book.ledgerGroups().flatMap { GroupLedger.positions(it, account, orders, fills) }
         // 계좌 외부 매도가 있으면 특정 그룹의 주식을 다른 그룹 소유로 간주하지 않는다.
         allPositions
             .groupBy { it.symbol }
@@ -157,6 +171,47 @@ class GroupTradingCoordinator(
                 )
                     continue
                 val owned = positions.find { it.symbol == decision.symbol }?.quantity ?: 0
+                val usableCash =
+                    if (book.parking.enabled)
+                        (portfolio.cash - book.parking.reserveCash).coerceAtLeast(0)
+                    else portfolio.cash
+                val dailySpent =
+                    GroupLedger.ordersFor(account, orders)
+                        .filter {
+                            it.intent.side == Side.BUY &&
+                                it.status != OrderStatus.REJECTED &&
+                                it.intent.at.atZone(SEOUL).toLocalDate() ==
+                                    now.atZone(SEOUL).toLocalDate()
+                        }
+                        .sumOf { Math.multiplyExact(it.intent.quantity, it.intent.limitPrice) }
+                // 파킹을 청산하기 전에 원래 전략 주문이 공통 예산 안에서 실행 가능한지 확인한다.
+                val price = validQuotes.getValue(decision.symbol).ask
+                val buyQuantity =
+                    minOf(
+                        decision.quantity,
+                        minOf(
+                            availableCash,
+                            group.orderBudget,
+                            limits.orderBudget,
+                            (limits.dailyBudget - dailySpent).coerceAtLeast(0),
+                        ) / ParkingPlanner.buffered(price),
+                    )
+                if (decision.side == Side.BUY) {
+                    if (buyQuantity <= 0) continue
+                    val required = ParkingPlanner.buffered(Math.multiplyExact(buyQuantity, price))
+                    if (usableCash < required) {
+                        // 파킹 매도 후에는 이 전략 주문을 보내지 않는다. 다음 회차에서 체결·현금·전략을 다시 평가한다.
+                        return parkingOrder(
+                            account,
+                            portfolio,
+                            quotes,
+                            evidence,
+                            limits,
+                            now,
+                            required,
+                        )
+                    }
+                }
                 return engine.submit(
                     account,
                     portfolio,
@@ -168,13 +223,98 @@ class GroupTradingCoordinator(
                         plan.id,
                         group.id,
                         decision.occurrence,
-                        decision.quantity,
+                        if (decision.side == Side.BUY) buyQuantity else decision.quantity,
                         owned,
-                        availableCash,
+                        minOf(availableCash, usableCash),
                     ),
                 )
             }
         }
-        return null
+        // 실행 가능한 전략 주문이 없을 때만 남는 현금을 파킹한다.
+        return parkingOrder(account, portfolio, quotes, evidence, limits, now, null)
+    }
+
+    /** 파킹 소유량도 같은 영속 체결 원장으로 관리한다. 외부 보유분·예상 매도대금은 사용하지 않는다. */
+    private suspend fun parkingOrder(
+        account: Account,
+        portfolio: Portfolio,
+        quotes: Map<String, Quote>,
+        evidence: List<ResearchEvidence>,
+        limits: Strategy,
+        now: Instant,
+        required: Long?,
+    ): OrderRecord? {
+        val configured = store.strategyBook().parking
+        if (
+            !configured.enabled ||
+                !limits.manageHoldings ||
+                limits.orderBudget < configured.minimumTrade
+        )
+            return null
+        val policy =
+            configured.copy(orderBudget = minOf(configured.orderBudget, limits.orderBudget))
+        val quote = quotes[policy.symbol] ?: return null
+        val orders = GroupLedger.ordersFor(account, store.records())
+        val owned =
+            GroupLedger.positions(policy.ledgerGroup(), account, orders, store.groupFills())
+                .find { it.symbol == policy.symbol }
+                ?.quantity ?: 0L
+        val decision =
+            ParkingPlanner.decide(policy, portfolio, quote, owned, required, orders, now)
+                ?: return null
+        if (decision.side == Side.BUY) {
+            val research = evidence.find { it.symbol == policy.symbol } ?: return null
+            if (research.buyBlockers(now).isNotEmpty()) return null
+            val spent =
+                orders
+                    .filter {
+                        it.intent.side == Side.BUY &&
+                            it.status != OrderStatus.REJECTED &&
+                            it.intent.at.atZone(SEOUL).toLocalDate() ==
+                                now.atZone(SEOUL).toLocalDate()
+                    }
+                    .sumOf { Math.multiplyExact(it.intent.quantity, it.intent.limitPrice) }
+            if (limits.dailyBudget - spent < ParkingPlanner.buffered(quote.ask)) return null
+            if (
+                portfolio.holdings.none { it.symbol == policy.symbol } &&
+                    (portfolio.holdings.map { it.symbol } +
+                            orders
+                                .filter {
+                                    it.intent.side == Side.BUY &&
+                                        it.status != OrderStatus.REJECTED &&
+                                        it.intent.at.atZone(SEOUL).toLocalDate() ==
+                                            now.atZone(SEOUL).toLocalDate()
+                                }
+                                .map { it.intent.symbol })
+                        .distinct()
+                        .size >= limits.maxPositions
+            )
+                return null
+        }
+        // 완료된 이전 회차 수를 영속 저널에서 구한다. 재시작해도 동일 회차 재주문은 불가능하다.
+        val cycle = orders.count { it.intent.groupId == ParkingPolicy.GROUP_ID }
+        return engine.submit(
+            account,
+            portfolio,
+            quote,
+            decision.side,
+            decision.reason,
+            limits.copy(
+                orderBudget =
+                    minOf(
+                        limits.orderBudget,
+                        policy.orderBudget,
+                        ParkingPlanner.remaining(policy, orders, now),
+                    )
+            ),
+            GroupAllocation(
+                ParkingPolicy.STRATEGY_ID,
+                ParkingPolicy.GROUP_ID,
+                "parking:$cycle",
+                decision.quantity,
+                owned,
+                (portfolio.cash - policy.reserveCash).coerceAtLeast(0),
+            ),
+        )
     }
 }

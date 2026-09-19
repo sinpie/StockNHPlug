@@ -56,6 +56,62 @@ class TradingEngineTest {
     }
 
     @Test
+    fun parkingCycleCannotReplayAcrossDatesOrUseAnotherStrategyId() = runBlocking {
+        val b = FakeBroker()
+        val j = Journal()
+        j.list +=
+            OrderRecord(
+                OrderIntent(
+                    "old",
+                    Environment.MOCK,
+                    account.number,
+                    quote.symbol,
+                    Side.BUY,
+                    1,
+                    10000,
+                    "test",
+                    now.minusSeconds(86400),
+                    account.brokerId,
+                    ParkingPolicy.STRATEGY_ID,
+                    ParkingPolicy.GROUP_ID,
+                    "parking:7",
+                ),
+                OrderStatus.ACCEPTED,
+            )
+        val e = TradingEngine(b, j) { now }.also { it.start(portfolio) }
+        val allocation =
+            GroupAllocation(
+                ParkingPolicy.STRATEGY_ID,
+                ParkingPolicy.GROUP_ID,
+                "parking:7",
+                1,
+                0,
+                100000,
+            )
+        assertTrue(
+            runCatching {
+                    e.submit(account, portfolio, quote, Side.BUY, "test", Strategy(), allocation)
+                }
+                .isFailure
+        )
+        assertTrue(
+            runCatching {
+                    e.submit(
+                        account,
+                        portfolio,
+                        quote,
+                        Side.BUY,
+                        "test",
+                        Strategy(),
+                        allocation.copy(strategyId = "other", occurrence = "parking:8"),
+                    )
+                }
+                .isFailure
+        )
+        assertEquals(0, b.sent)
+    }
+
+    @Test
     fun replacementExitPolicyReceivesTrackingButCannotBypassRiskChecks() = runBlocking {
         val b = FakeBroker()
         var calls = 0

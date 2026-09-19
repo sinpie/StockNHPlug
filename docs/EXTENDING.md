@@ -69,3 +69,6 @@ flowchart TD
 ## 그룹 전략 확장
 
 현재 기본 자동매매 실행은 TradingStrategy 단일 알고리즘 대신 GroupAlgorithm을 사용합니다. 새 GroupAlgorithm 구현을 AppContainer의 GroupAlgorithmRegistry에 등록하면 전략 추가 UI에 표시됩니다. GroupContext는 해당 그룹의 확정 수량/원가/현금과 유효 시세만 제공하며, GroupDecision은 희망 주문입니다. 실제 전송은 GroupTradingCoordinator와 TradingEngine의 공통 위험/저널 검사를 거칩니다. 필요한 고유 설정은 StrategyGroup/GroupCodec/편집 UI와 테스트를 함께 확장합니다. BrokerSession에 GroupExecutionSource를 제공하지 않은 API는 그룹 자동주문을 할 수 없습니다. 상세 계약은 [GROUP_STRATEGIES.md](GROUP_STRATEGIES.md)를 참조합니다.
+
+## 파킹 확장
+`ParkingPlanner`는 Android/증권사 의존성 없는 순수 현금 정책입니다. 상품별 데이터 적격성, 결제일 모델, 나무매직 가격 추적을 추가하더라도 공통 엔진·체결 종료 대사·최소 현금·주문 회전 한도를 우회하지 마세요. 새 상품의 데이터 조건을 단순히 생략해서는 안 됩니다.

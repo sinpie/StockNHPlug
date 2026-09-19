@@ -100,6 +100,7 @@ class LocalStoreInstrumentedTest {
                         symbols = listOf(GroupSymbol("005930")),
                     )
                 ),
+                parking = ParkingPolicy(enabled = true, symbol = "005940", reserveCash = 30000),
             )
         val store = com.sinpie.stocknhplug.data.EncryptedAppStorage(vault)
         store.saveStrategyBook(book)

@@ -51,6 +51,7 @@ fun StrategyGroupsScreen(
                 color = GroupMuted,
             )
         }
+        ParkingSettingsCard(s, save)
         s.book.plans.forEach { p ->
             val groups = s.book.groups.filter { it.strategyId == p.id }
             GCard {

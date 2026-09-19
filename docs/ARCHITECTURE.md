@@ -106,3 +106,6 @@ HTTP 성공과 업무 성공을 구분합니다. 오류 문구/심각도와 응�
 ## 6. 화면 (`ui`, `MainActivity`)
 
 `MainActivity`는 기기 잠금 인증, FLAG_SECURE, 오버레이 숨김, 가려진 터치 차단, 알림 권한 요청을 담당합니다. 백그라운드 이동 후 재진입하면 다시 인증합니다. `StockApp`은 6개 탭과 설정 대화상자로 기능을 분리합니다. `StockTheme`, `Panel`, `Badge`, `Field`는 일관된 색상·여백·입력 형태를 제공합니다. 숫자가 없으면 0이나 예시 데이터를 만들지 않고 `—`/빈 상태를 표시합니다.
+
+## 파킹 현금 정책 (2026-09-20)
+`StrategyBook.parking` → `ParkingSettingsCard` 편집 → `TradingController.saveBook` 암호화 저장 순서입니다. `ParkingPolicy`는 사용자 전략그룹 밖의 예약 소유권을 가지며 `ledgerGroups()`로 체결 대사·수량 검증에 포함합니다. `GroupTradingCoordinator`는 적격 전략 매수의 자금 부족 시 `ParkingPlanner`의 매도 제안을 실행하고 즉시 반환합니다. 다음 회차의 종료 체결·잔고 확인 전 주식 매수는 없습니다. 남는 현금 매수는 모든 전략 판단 뒤 수행합니다. [클래스 및 자금 흐름](PARKING.md)을 참고하세요.

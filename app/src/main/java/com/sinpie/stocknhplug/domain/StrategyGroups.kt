@@ -170,8 +170,24 @@ data class StrategyGroup(
         }
 }
 
-data class StrategyBook(val plans: List<StrategyPlan>, val groups: List<StrategyGroup>) {
+data class StrategyBook(
+    val plans: List<StrategyPlan>,
+    val groups: List<StrategyGroup>,
+    val parking: ParkingPolicy = ParkingPolicy(),
+) {
+    /** 파킹은 사용자 전략 목록 밖에 있지만 체결 대사·소유권 검증에는 항상 포함한다. */
+    fun ledgerGroups(): List<StrategyGroup> = groups + parking.ledgerGroup()
+
     fun validate() {
+        parking.validate()
+        require(plans.none { it.id == ParkingPolicy.STRATEGY_ID })
+        require(groups.none { it.id == ParkingPolicy.GROUP_ID })
+        require(
+            parking.symbol.isEmpty() ||
+                groups.none { g -> g.symbols.any { it.symbol == parking.symbol } }
+        ) {
+            "파킹종목은 전략그룹 종목과 분리하세요."
+        }
         require(plans.size in 1..20 && groups.size <= 100)
         require(
             plans.map { it.id }.distinct().size == plans.size &&

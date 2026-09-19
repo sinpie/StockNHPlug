@@ -127,6 +127,11 @@ class TradingController(
         book.plans.forEach { groupRegistry.get(it.algorithmId) }
         val previous = state.value.book
         val recorded = store.records().map { it.intent.groupId }.filter { it.isNotBlank() }.toSet()
+        check(
+            ParkingPolicy.GROUP_ID !in recorded || book.parking.symbol == previous.parking.symbol
+        ) {
+            "파킹 거래 기록이 있으면 종목을 변경할 수 없습니다. 기존 원장을 보존하세요."
+        }
         previous.groups
             .filter { it.id in recorded }
             .forEach { old ->
@@ -157,7 +162,8 @@ class TradingController(
 
     /** 여러 그룹의 같은 종목은 한 번만 연구·구독한다. 주문 소유권은 그룹 ID로 따로 유지한다. */
     private fun configuredSymbols(): List<String> =
-        state.value.book.groups
+        state.value.book
+            .ledgerGroups()
             .flatMap { it.symbols.map { row -> row.symbol } }
             .distinct()
             .ifEmpty { state.value.settings.symbols }
@@ -268,7 +274,7 @@ class TradingController(
         val executions = broker!!.executions(account, LocalDate.now(SEOUL))
         groups?.reconcile(account)
         val groupPositions =
-            state.value.book.groups.associate {
+            state.value.book.ledgerGroups().associate {
                 it.id to
                     com.sinpie.stocknhplug.trading.GroupLedger.positions(
                         it,
@@ -349,7 +355,8 @@ class TradingController(
             s.book.groups.filter {
                 it.enabled && s.book.plans.any { p -> p.id == it.strategyId && p.enabled }
             }
-        check(enabled.isNotEmpty()) { "실행할 전략과 그룹을 켜세요." }
+        check(enabled.isNotEmpty() || s.book.parking.enabled) { "실행할 전략그룹 또는 파킹을 켜세요." }
+        check(!s.book.parking.enabled || s.settings.manageHoldings) { "파킹 실행에는 자동매도 동의가 필요합니다." }
         check(enabled.sumOf { it.capital } <= s.portfolio.equity) { "그룹 자본 합계가 계좌 순자산보다 큽니다." }
         check(!s.running)
         check(

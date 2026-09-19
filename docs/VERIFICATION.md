@@ -8,6 +8,14 @@ Windows, Android Studio JBR, Gradle 8.13, AGP 8.12.2, Kotlin 1.9.0, Android SDK 
 
 ## 실행 결과
 
+### 파킹 설정·자금 순환 (2026-09-20)
+
+`testDebugUnitTest lintDebug assembleDebug bundleRelease` 성공: JVM 63개 통과, 린트 오류 0/기존 버전 경고 12개, APK/AAB 빌드 성공. `connectedDebugAndroidTest`를 별도 실행해 API 30 테스트 10개가 모두 통과했습니다. 파킹 설정의 입력 오류/저장, 암호화 복원, 최소 현금/상한/회전/간격, 외부 보유 미사용, 매도 접수·체결만으로 주식 주문을 진행하지 않음, 실제 조회 현금 갱신 후 재평가, 오래된 전략 시세 시 유휴 파킹 금지, 날짜를 넘긴 회차 재전송 거절을 포함합니다. 출처·계층 검사와 Markdown 링크 검사도 통과했습니다.
+
+첫 통합 실행에서는 UI 테스트가 `keyDispatchingTimedOut`로 중단되어 6개 중 1개 실패로 기록됐습니다. 같은 코드로 빌드 완료 후 기기 테스트를 단독 재실행했을 때 10개 모두 통과했습니다. 병행 실행 로그에 렌더링 지연이 있었으나 환경 부하를 유일한 원인으로 확정하지 않습니다. 실물 기기 성능·장시간 서비스·실제 증권사 파킹/결제 검증은 미실행입니다.
+
+이전 백그라운드 변경 커밋 `876f731`의 [원격 CI 35450495185](https://github.com/sinpie/StockNHPlug/actions/runs/35450495185)도 성공했습니다. 이는 현재 파킹 변경의 원격 결과와는 구분합니다.
+
 ### 지속 실행 변경 (2026-09-20)
 
 앱 자체 6시간 만료/최근 앱 목록 제거 시 정지 제거와 시스템 timeout 처리 후 `testDebugUnitTest lintDebug assembleDebug bundleRelease`가 성공했습니다. JVM 52개와 출처·계층 검사 통과. 이번 변경의 실제 서비스 장시간 실행/화면 꺼짐/최근 앱 제거/Doze/Android 15+ timeout 기기 검증은 미실행이며, 이전 Android 9개 통과를 새 수명주기 검증으로 간주하지 않습니다. NH 그룹 자동주문은 기존 검증 게이트로 잠겨 있습니다. NamuMagic 참조가 필요한 적응형 추적은 아직 미구현이며 [추적 요구사항](PRICE_TRACKING.md)에 구분했습니다.
@@ -16,10 +24,10 @@ Windows, Android Studio JBR, Gradle 8.13, AGP 8.12.2, Kotlin 1.9.0, Android SDK 
 |---|---|---|
 | Debug APK | 빌드 성공 | `app/build/outputs/apk/debug/app-debug.apk` |
 | Release AAB | 빌드 성공, 업로드 서명 미설정 | `app/build/outputs/bundle/release/app-release.aab` |
-| JVM unit tests | 52개 통과, 실패/오류 0 | `app/build/reports/tests/testDebugUnitTest/index.html` |
+| JVM unit tests | 63개 통과, 실패/오류 0 | `app/build/reports/tests/testDebugUnitTest/index.html` |
 | Android Lint | 오류 0, 라이브러리/Gradle 최신 버전 알림 경고 존재 | `app/build/reports/lint-results-debug.html` |
 | 출처/로그 정적 검사 | 통과 | `python scripts/audit_sources.py` |
-| Android instrumentation | 9개 통과, 실패 0 | Android 11 / API 30 x86_64: Keystore 2개, UI 2개, LocalStore/설정 저장 5개 |
+| Android instrumentation | 10개 통과, 실패 0 | Android 11 / API 30 x86_64: Keystore 2개, UI 3개, LocalStore/설정 저장 5개 |
 | 실제 NHPlug 모의 계좌 | 미실행 | 사용자 기기 키·모의계좌 필요 |
 | 실제 자금 주문 | 미실행, 잠금 | 기본 구성은 모의 계좌만 제공 |
 | Play 심사 | 미제출 | RELEASE.md의 게이트 미완료 |

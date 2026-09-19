@@ -111,14 +111,22 @@ class TradingEngine(
             }
             val today =
                 records.filter { it.intent.at.atZone(SEOUL).toLocalDate() == local.toLocalDate() }
+            val parking = allocation?.groupId == ParkingPolicy.GROUP_ID
+            if (parking)
+                require(
+                    allocation!!.strategyId == ParkingPolicy.STRATEGY_ID &&
+                        allocation.occurrence.matches(Regex("parking:[0-9]+"))
+                )
             check(
-                today.none {
+                (if (parking) records else today).none {
                     it.intent.symbol == quote.symbol &&
                         it.intent.side == side &&
-                        it.intent.groupId == (allocation?.groupId ?: "")
+                        it.intent.groupId == (allocation?.groupId ?: "") &&
+                        (allocation?.groupId != ParkingPolicy.GROUP_ID ||
+                            it.intent.occurrence == allocation.occurrence)
                 }
             ) {
-                "동일 종목·방향은 하루 한 번만 주문합니다."
+                "같은 전략 주문 또는 파킹 회차가 이미 기록되어 있습니다."
             }
             val holding = portfolio.holdings.find { it.symbol == quote.symbol }
             val price = if (side == Side.BUY) quote.ask else quote.bid

@@ -21,6 +21,29 @@ class StrategyGroupsUiTest {
     @get:Rule val compose = createComposeRule()
 
     @Test
+    fun parkingEditorRejectsBadInputAndSavesExplicitSettings() {
+        var state by mutableStateOf(AppState())
+        compose.setContent {
+            StockTheme {
+                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                    ParkingSettingsCard(state) { state = state.copy(book = it) }
+                }
+            }
+        }
+        compose.onNodeWithText("파킹 설정").performClick()
+        compose.onNodeWithText("파킹 종목코드 (6자리)").performTextReplacement("005940")
+        compose.onNodeWithText("남겨둘 최소 현금 (원)").performTextReplacement("잘못된 값")
+        compose.onNodeWithText("파킹 저장").assertIsNotEnabled()
+        compose.onNodeWithText("남겨둘 최소 현금 (원)").performTextReplacement("30000")
+        compose.onNodeWithText("파킹 저장").performClick()
+        compose.runOnIdle {
+            Assert.assertEquals("005940", state.book.parking.symbol)
+            Assert.assertEquals(30000L, state.book.parking.reserveCash)
+            Assert.assertFalse(state.book.parking.enabled)
+        }
+    }
+
+    @Test
     fun strategyNavigationPresetsAndPreview() {
         var state by
             mutableStateOf(

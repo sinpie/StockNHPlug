@@ -11,6 +11,7 @@
 - Never enable live trading until every release gate has recorded evidence. This is an implementation rule, not permission to place orders.
 - Orders must be journaled before network dispatch; unknown outcomes stop trading and never automatically retry.
 - Default automation algorithms are averaging-down and rebalancing. Keep strategy/group IDs distinct; the same symbol may belong to multiple groups. Group quantity/cost must come only from reconciled cumulative fills, never accepted orders or guessed broker order-number mappings. Preserve strategy/group schedule overrides and mandatory research gates for every buy path.
+- Parking is a separate account cash policy with reserved ownership IDs. Sell only reconciled app-owned parking quantities; wait for terminal fills and fresh broker cash before re-evaluating a stock purchase. Keep minimum cash, turnover/cooldown limits, common risk gates and research requirements; never treat expected parking-sale proceeds as available cash.
 - Do not silently replace missing financial/news/history evidence with sample data or bypass policy gates.
 - Do not collect full news articles, publish market datasets, or add remote code/WebViews/accessibility automation.
 - Do not spawn agents unless explicitly requested by the user.

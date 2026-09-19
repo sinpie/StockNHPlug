@@ -128,3 +128,6 @@ API와 전략의 구체적인 교체 계약 및 의존성 방향은 [EXTENDING.m
 ## 전략 그룹 확장 후 현재 흐름
 
 화면 StrategyGroupsScreen → TradingController.saveBook → StrategyBook.validate → EncryptedAppStorage.saveStrategyBook → groupbook 암호화 파일입니다. 계좌 연결 시 BrokerSession.groupExecutions가 있으면 GroupTradingCoordinator를 통해 대사합니다. NHPlug는 해당 제공자가 없어 시작이 차단됩니다. 검증된 제공자가 있는 구성에서는 refreshInternal → reconcile → GroupLedger.merge/positions → saveGroupFills → tick(그룹 매도/정기매수/추천/알고리즘) → TradingEngine.submit(allocation) → 사전 저널 → Broker.place 순서입니다. 주문 접수는 그룹 수량을 바꾸지 않으며 확정 누적 체결만 반영합니다. 이전 단일 전략 반복 경로는 그룹 조정자로 교체되었습니다.
+
+## 파킹 진입점
+전략 화면 → `ParkingSettingsCard` → `ParkingEditor` → `saveBook` 순서로 설정합니다. 매매 회차는 `GroupTradingCoordinator.tick` → 자금 부족 검사 → `parkingOrder` → `ParkingPlanner.decide` → 공통 `TradingEngine.submit` 순서입니다. 체결은 기존 `reconcile` → `GroupLedger`를 통해 별도 파킹 원장으로 돌아옵니다. 접수금액을 주식 매수자금에 즉시 반영하는 경로는 없습니다. 자세한 조건은 [PARKING](PARKING.md)에 있습니다.

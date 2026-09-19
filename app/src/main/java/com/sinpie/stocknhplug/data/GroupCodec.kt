@@ -136,9 +136,13 @@ object GroupCodec {
         JSONObject()
             .put("plans", JSONArray(value.plans.map { encode(it) }))
             .put("groups", JSONArray(value.groups.map { encode(it) }))
+            .put("parking", encode(value.parking))
 
     fun readStrategyBook(json: JSONObject): StrategyBook =
         StrategyBook(
+            parking =
+                if (json.has("parking")) readParkingPolicy(json.getJSONObject("parking"))
+                else ParkingPolicy(),
             plans =
                 json.getJSONArray("plans").let { a ->
                     (0 until a.length()).map { readStrategyPlan(a.getJSONObject(it)) }
@@ -148,6 +152,31 @@ object GroupCodec {
                     (0 until a.length()).map { readStrategyGroup(a.getJSONObject(it)) }
                 },
         )
+
+    /** 이전 설정에 parking이 없을 때만 꺼진 기본값으로 이전한다. 존재하는 필드의 손상은 거절한다. */
+    fun encode(value: ParkingPolicy): JSONObject =
+        JSONObject()
+            .put("enabled", value.enabled)
+            .put("symbol", value.symbol)
+            .put("reserveCash", value.reserveCash)
+            .put("maxValue", value.maxValue)
+            .put("orderBudget", value.orderBudget)
+            .put("dailyTurnover", value.dailyTurnover)
+            .put("minimumTrade", value.minimumTrade)
+            .put("cooldownSeconds", value.cooldownSeconds)
+
+    fun readParkingPolicy(json: JSONObject) =
+        ParkingPolicy(
+                enabled = json.getBoolean("enabled"),
+                symbol = json.getString("symbol"),
+                reserveCash = json.getLong("reserveCash"),
+                maxValue = json.getLong("maxValue"),
+                orderBudget = json.getLong("orderBudget"),
+                dailyTurnover = json.getLong("dailyTurnover"),
+                minimumTrade = json.getLong("minimumTrade"),
+                cooldownSeconds = json.getInt("cooldownSeconds"),
+            )
+            .also { it.validate() }
 
     fun encode(value: GroupFillReport): JSONObject =
         JSONObject()
