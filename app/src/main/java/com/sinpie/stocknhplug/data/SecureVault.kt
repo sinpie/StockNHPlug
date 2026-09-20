@@ -4,8 +4,10 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.AtomicFile
+import com.sinpie.stocknhplug.domain.Account
 import java.io.File
 import java.security.KeyStore
+import java.security.MessageDigest
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -15,8 +17,19 @@ import org.json.JSONObject
 /**
  * Android Keystore key never leaves the device. Payloads are versioned, authenticated and atomic.
  */
-class SecureVault(context: Context) {
-    private val directory = context.noBackupFilesDir
+class SecureVault(context: Context, account: Account? = null) {
+    private val root = context.noBackupFilesDir
+    private val namespace =
+        account?.let {
+            val identity =
+                "${it.brokerId.length}:${it.brokerId}|${it.environment.name}|${it.number.length}:${it.number}"
+            MessageDigest.getInstance("SHA-256")
+                .digest(identity.toByteArray(Charsets.UTF_8))
+                .joinToString("") { b -> "%02x".format(b) }
+        }
+    private val directory =
+        if (namespace == null) root
+        else File(root, "accounts/$namespace").also { check(it.mkdirs() || it.isDirectory) }
     private val alias = "stocknhplug.local.v1"
 
     /** AndroidKeyStore에서 비추출 AES 키를 가져오거나 최초 생성한다. 비밀번호 입력값을 암호화 키로 사용하지 않는다. */
@@ -48,7 +61,7 @@ class SecureVault(context: Context) {
         require(name.matches(Regex("[a-z]+")))
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, key())
-        cipher.updateAAD(name.toByteArray())
+        cipher.updateAAD(aad(name))
         val plain = payload.toString().toByteArray(Charsets.UTF_8)
         val encoded =
             try {
@@ -77,7 +90,7 @@ class SecureVault(context: Context) {
         check(encoded.size >= 30 && encoded[0] == 1.toByte()) { "암호화 저장소 형식 오류" }
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, encoded.copyOfRange(1, 13)))
-        cipher.updateAAD(name.toByteArray())
+        cipher.updateAAD(aad(name))
         val plain = cipher.doFinal(encoded, 13, encoded.size - 13)
         return try {
             JSONObject(String(plain, Charsets.UTF_8))
@@ -95,22 +108,39 @@ class SecureVault(context: Context) {
     /** 앱 소유 데이터와 Keystore 키를 함께 제거한다. 호출 전에 모든 작업이 끝나야 한다. */
     @Synchronized
     fun deleteAll() {
-        listOf(
-                "credentials",
-                "token",
-                "journal",
-                "settings",
-                "research",
-                "snapshot",
-                "events",
-                "groupbook",
-                "groupfills",
-                "tracking",
-            )
-            .forEach(::delete)
+        names.forEach(::delete)
+        if (namespace != null) return
+        // 앱 내부의 정해진 계좌 디렉터리/파일만 지운다. 다른 앱과 사용자 파일을 순회하지 않는다.
+        File(root, "accounts")
+            .listFiles()
+            ?.filter { it.isDirectory && it.name.matches(Regex("[0-9a-f]{64}")) }
+            ?.forEach { dir ->
+                names.forEach { AtomicFile(File(dir, "$it.enc")).delete() }
+                dir.delete()
+            }
         KeyStore.getInstance("AndroidKeyStore").apply {
             load(null)
             deleteEntry(alias)
         }
     }
+
+    private fun aad(name: String) =
+        (namespace?.let { "$it/$name" } ?: name).toByteArray(Charsets.UTF_8)
+
+    private val names =
+        listOf(
+            "credentials",
+            "token",
+            "journal",
+            "settings",
+            "research",
+            "snapshot",
+            "events",
+            "groupbook",
+            "groupfills",
+            "tracking",
+            "history",
+            "accounts",
+            "migration",
+        )
 }

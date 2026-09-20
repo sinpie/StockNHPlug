@@ -1,5 +1,13 @@
 # 검증 결과
 
+## 2026-09-20 · 요청 25 계좌 분리·기간 통계
+
+- `testDebugUnitTest lintDebug assembleDebug bundleRelease connectedDebugAndroidTest`: 성공. JVM 112개 실패/오류 0, Android API 30 XML 25개 중 24개 통과·실제 키 opt-in 1개 의도적 제외. 콘솔의 중복 종료 개수 대신 XML 고유 testcase를 확인했다.
+- 계좌별 설정과 암호문 AAD 격리, 같은 날짜 누적 체결 교체, 계좌/연도가 다른 같은 주문번호, 과거 손익 유지, 미확인 주문 이전, UI 기간/상세/계좌 전환을 검사했다. 여러 계좌 동시 시작·부분 시작 금지·요청 중 전역 키/삭제 차단은 가짜 runtime 및 JVM 회귀로 확인했다. 실제 증권사 다중 주문 검증이 아니다.
+- 초기 Kotlin Long/Int 동등 비교 컴파일 오류를 수정했다. 계층·출처·문서 링크 검사 통과. 린트 오류 0/버전 경고 14. 실제 키·주문은 사용하지 않았으며 다중 NH 소켓/장중 주문·장시간 백그라운드는 여전히 미검증이다.
+- 계좌 고정 UI 명령 회귀를 추가한 최종 JVM 113개 통과. 통계·계좌 선택 UI는 기본/130% 글꼴 각각 2개 통과했다. [기본 통계 화면](images/history-statistics.png), [130% 통계 화면](images/history-statistics-130.png)의 금액·탭·줄바꿈을 육안 확인했다. 합성 fixture 표식을 포함한 UI 시험 호스트이며 production 화면 보호를 해제하지 않았다. 시험 설치 제거·기존 글꼴/adb 권한 복원 성공.
+- 최종 계좌 명령 고정 보완 이후 전체 Gradle 명령 재실행 성공: JVM 113개/Android 24개 통과, Debug APK·Release AAB·lintDebug·출처/계층/문서 검사 통과. 기존 실거래·그룹 체결 대사·연구 게이트를 유지했다.
+
 ## 2026-09-20 · 요청 24 UX·비동기 인터페이스
 
 - 구현 `9ee728a`의 [GitHub Actions 35508100911](https://github.com/sinpie/StockNHPlug/actions/runs/35508100911) 성공: Ubuntu/JDK 17에서 JVM·린트·Debug APK·Release AAB·출처·계층 검사 및 산출물 업로드 통과. Node 20 actions의 Node 24 강제 전환, setup-java v4 폐기 예정, ubuntu-latest 전환 안내는 남아 있다. Android 기기 시험은 아래 로컬 결과이며 CI에서 실행한 것으로 표시하지 않는다.

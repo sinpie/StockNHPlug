@@ -99,7 +99,7 @@ class ControllerAsyncTest {
         override fun close() {}
     }
 
-    private inner class Harness(dispatcher: CoroutineDispatcher) {
+    private inner class Harness(dispatcher: CoroutineDispatcher, bound: Account? = null) {
         val broker = FakeBroker()
         val store = Store()
         var creates = 0
@@ -124,7 +124,26 @@ class ControllerAsyncTest {
                 NamuExecutionGate(),
                 dispatcher = dispatcher,
                 ioDispatcher = dispatcher,
+                boundAccount = bound,
             )
+    }
+
+    @Test
+    fun boundControllerRejectsMissingAccountAndNeverSwitchesOwnership() = runTest {
+        val other = account.copy(number = "other")
+        val h = Harness(StandardTestDispatcher(testScheduler), other)
+        h.controller.connect()
+        runCurrent()
+        assertFalse(h.controller.state.value.connected)
+        assertEquals(0, h.store.snapshotsWritten)
+        h.broker.accountsBlock = { listOf(account, other) }
+        h.controller.connect()
+        runCurrent()
+        assertEquals(other, h.controller.state.value.selected)
+        h.controller.select(account)
+        runCurrent()
+        assertEquals(other, h.controller.state.value.selected)
+        assertEquals(1, h.store.snapshotsWritten)
     }
 
     @Test

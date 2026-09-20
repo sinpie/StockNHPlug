@@ -1,5 +1,7 @@
 # 비동기 인터페이스와 기능 블록 검토
 
+요청 25 확장: `MultiAccountController`의 화면 선택과 계좌별 `AccountRuntime`의 Job 수명을 분리했다. 계좌 A 응답/콜백은 A 상태만 갱신하고 선택 계좌 B 화면에는 들어가지 않는다. `accountWorkspace(account)`로 편집·조회 콜백을 생성 당시 계좌에 고정해 전환 직전의 지연 UI 이벤트도 새 계좌에 보내지 않는다. 전체 시작은 신규 대상의 validateStart를 모두 통과한 뒤 수행한다. 토큰/REST 호출 제한만 공유하고 전략/저널/파킹/시세/통계는 분리한다. 자세한 흐름은 [ACCOUNT_HISTORY.md](ACCOUNT_HISTORY.md).
+
 요청 24의 원문은 [USER_REQUESTS.md](USER_REQUESTS.md)에 보존한다. 이 문서는 구현 계약이며 실제 시험 결과는 [VERIFICATION.md](VERIFICATION.md)에 구분한다.
 
 ## 요청 수명

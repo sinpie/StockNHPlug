@@ -17,13 +17,15 @@ import com.sinpie.stocknhplug.application.*
 
 /** 계좌/시세/보안으로 구획한다. 비밀 입력은 화면 복원·스크린샷 자료에 저장하지 않는다. */
 @Composable
-internal fun SettingsDialog(s: AppState, c: TradingController, close: () -> Unit) {
+internal fun SettingsDialog(s: AppState, c: TradingWorkspace, close: () -> Unit) {
+    val accountCommands = c.accountWorkspace(s.selected)
     var section by remember { mutableIntStateOf(0) }
     var key by remember { mutableStateOf("") }
     var secret by remember { mutableStateOf("") }
     var dart by remember { mutableStateOf("") }
     var delete by remember { mutableStateOf(false) }
     val editable = !s.running && !s.busy && !s.storageError
+    val globalEditable = !s.fleetRunning && !s.fleetBusy && editable
     Dialog(close, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Column(Modifier.safeDrawingPadding().imePadding()) {
@@ -49,13 +51,13 @@ internal fun SettingsDialog(s: AppState, c: TradingController, close: () -> Unit
                                     fontSize = 12.sp,
                                     color = Muted,
                                 )
-                                Field("앱키", key, { key = it }, editable, secret = true)
-                                Field("시크릿", secret, { secret = it }, editable, secret = true)
+                                Field("앱키", key, { key = it }, globalEditable, secret = true)
+                                Field("시크릿", secret, { secret = it }, globalEditable, secret = true)
                                 Field(
                                     "OpenDART 키 (선택)",
                                     dart,
                                     { dart = it },
-                                    editable,
+                                    globalEditable,
                                     secret = true,
                                 )
                                 Text(
@@ -71,14 +73,16 @@ internal fun SettingsDialog(s: AppState, c: TradingController, close: () -> Unit
                                         dart = ""
                                     },
                                     Modifier.fillMaxWidth(),
-                                    enabled = editable && key.isNotBlank() && secret.isNotBlank(),
+                                    enabled =
+                                        globalEditable && key.isNotBlank() && secret.isNotBlank(),
                                 ) {
                                     Text("키 저장")
                                 }
                             }
+                            AccountManagement(s, c)
                             Panel("연결 계좌") {
                                 OutlinedButton(
-                                    { c.connect() },
+                                    { accountCommands.connect() },
                                     Modifier.fillMaxWidth(),
                                     enabled = editable && s.hasCredentials,
                                 ) {
@@ -90,7 +94,7 @@ internal fun SettingsDialog(s: AppState, c: TradingController, close: () -> Unit
                                     FilterChip(
                                         s.selected == account,
                                         { c.select(account) },
-                                        enabled = editable,
+                                        enabled = true,
                                         label = { Text("모의 ${account.masked}") },
                                     )
                                 }
@@ -98,8 +102,13 @@ internal fun SettingsDialog(s: AppState, c: TradingController, close: () -> Unit
                         }
                         1 ->
                             Panel("시세 연결") {
-                                TrackingOptions(s.settings.websocketEnabled, editable) {
-                                    c.saveSettings(s.settings.copy(websocketEnabled = it))
+                                TrackingOptions(
+                                    s.settings.websocketEnabled,
+                                    editable && s.selected != null,
+                                ) {
+                                    accountCommands.saveSettings(
+                                        s.settings.copy(websocketEnabled = it)
+                                    )
                                 }
                             }
                         2 -> {
@@ -122,7 +131,7 @@ internal fun SettingsDialog(s: AppState, c: TradingController, close: () -> Unit
                                     fontSize = 13.sp,
                                     color = Muted,
                                 )
-                                TextButton({ delete = true }, enabled = !s.running && !s.busy) {
+                                TextButton({ delete = true }, enabled = globalEditable) {
                                     Text("전체 데이터 삭제", color = Red)
                                 }
                             }

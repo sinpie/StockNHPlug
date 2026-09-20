@@ -18,26 +18,48 @@ import com.sinpie.stocknhplug.trading.NamuExecutionGate
  */
 class AppContainer private constructor(context: Context) {
     private val vault = SecureVault(context.applicationContext)
-    val controller =
+    // 하나의 인증키가 발급한 토큰/REST 제한을 공유한다. 엔진과 계좌 데이터는 공유하지 않는다.
+    private val transport = NhTransport(vault, Environment.MOCK)
+    private val sessions = SessionFactory { onQuote, onEvent, onDisconnect ->
+        val dartKey = vault.read("credentials")?.optString("dart").orEmpty()
+        BrokerSession(
+            NhBroker(transport),
+            NhSocket(transport, onQuote, onEvent, onDisconnect),
+            ResearchRepository(
+                NhPriceHistoryProvider(transport),
+                if (dartKey.isBlank()) null else DartClient(dartKey),
+                UnlicensedNewsProvider(),
+            ),
+            currentPrices = NhCurrentPriceProvider(transport),
+        )
+    }
+    private val discovery =
         TradingController(
             EncryptedAppStorage(vault),
-            SessionFactory { onQuote, onEvent, onDisconnect ->
-                val transport = NhTransport(vault, Environment.MOCK)
-                val dartKey = vault.read("credentials")?.optString("dart").orEmpty()
-                BrokerSession(
-                    NhBroker(transport),
-                    NhSocket(transport, onQuote, onEvent, onDisconnect),
-                    ResearchRepository(
-                        NhPriceHistoryProvider(transport),
-                        if (dartKey.isBlank()) null else DartClient(dartKey),
-                        UnlicensedNewsProvider(),
-                    ),
-                    currentPrices = NhCurrentPriceProvider(transport),
-                )
-            },
+            sessions,
             TechnicalStrategy(),
             NamuExecutionGate(EncryptedTrackingStore(vault)),
             GroupAlgorithmRegistry.defaults(),
+            discoveryOnly = true,
+        )
+    val controller: TradingWorkspace =
+        MultiAccountController(
+            discovery,
+            EncryptedAccountDirectory(vault),
+            AccountRuntimeFactory { account ->
+                val scoped = SecureVault(context.applicationContext, account)
+                AccountMigration.migrate(vault, scoped, account)
+                TradingController(
+                    EncryptedAppStorage(scoped, vault, account),
+                    sessions,
+                    TechnicalStrategy(),
+                    NamuExecutionGate(EncryptedTrackingStore(scoped)),
+                    GroupAlgorithmRegistry.defaults(),
+                    boundAccount = account,
+                    historyStore = EncryptedAccountHistory(scoped),
+                )
+            },
+            { EncryptedAppStorage(vault).let { it.strategyBook() to it.settings() } },
         )
 
     companion object {

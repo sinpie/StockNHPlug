@@ -95,3 +95,10 @@ flowchart TD
 조회 제공자는 coroutine 취소를 전파해야 하며 CancellationException을 일반 오류/빈 응답으로 바꾸지 않는다. controller는 비협력 제공자도 반환 후 취소/세대 검사로 차단한다. `MarketStream` 구현체도 이전 소켓 콜백을 폐기해야 하며 controller가 연결 identity로 한 번 더 검증한다. `HybridPriceMonitor.clear` 이후 이전 REST 응답은 폐기한다. 테스트에서 dispatcher/IO dispatcher를 주입해 실제 반환 순서를 제어할 수 있다.
 
 UI 지표 확장은 `AccountAnalytics`와 읽기 전용 화면 컴포넌트에서 수행한다. 보유 비중/수익률/스프레드를 주문 가격·위험 판정에 재사용하지 않는다. [ASYNC_REVIEW.md](ASYNC_REVIEW.md)에 정의한 분모와 미제공 처리 기준을 유지한다.
+
+
+## 계좌·이력 포트 확장
+
+UI 편집/조회는 `accountWorkspace(account)`로 생성한 계좌 고정 명령을 사용한다. 화면 선택을 전역 가변 상태로 다시 읽어 목적 계좌를 바꾸지 않는다. 공유 키·계좌 목록·전체 정지 명령은 관리자에 남긴다.
+
+`TradingWorkspace`는 UI/서비스 명령, `AccountRuntime`은 계좌 고정 세션과 부작용 없는 validateStart, `AccountRuntimeFactory`는 composition root의 생성 포트다. 신규 브로커도 각 계좌 별도 runtime/storage/gate를 구성해야 한다. 인증키 단위 rate-limit은 공유하되 계좌 잔고/전략/연구 상태는 공유하지 않는다. `AccountHistoryStore`의 record는 날짜별 누적 체결 전체 교체, mergePnl은 날짜별 원천값 병합이다. null을 0으로 대체하거나 중복 체결을 더하지 않는다. 세부 불변식은 [ACCOUNT_HISTORY.md](ACCOUNT_HISTORY.md).

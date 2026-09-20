@@ -11,6 +11,12 @@ import kotlinx.coroutines.flow.StateFlow
 
 /** Compose에 노출되는 화면 상태. 키·토큰은 포함하지 않는다. connected는 초기 동기화와 구독 요청 완료이며 시세 신선도는 별도 검사한다. */
 data class AppState(
+    val accountRuns: List<AccountRun> = emptyList(),
+    val fleetRunning: Boolean = false,
+    val fleetBusy: Boolean = false,
+    val fleetCanStart: Boolean = false,
+    val accountRequired: Boolean = false,
+    val history: List<AccountDay> = emptyList(),
     val settings: Strategy = Strategy(),
     val book: StrategyBook = StrategyBook.defaults(),
     val groupAlgorithms: Map<String, String> = emptyMap(),
@@ -51,7 +57,10 @@ class TradingController(
     private val groupRegistry: GroupAlgorithmRegistry = GroupAlgorithmRegistry.defaults(),
     dispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
-) {
+    private val boundAccount: Account? = null,
+    private val discoveryOnly: Boolean = false,
+    private val historyStore: AccountHistoryStore? = null,
+) : AccountRuntime {
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
     private var actionJob: Job? = null
     @Volatile private var generation = 0L
@@ -65,7 +74,7 @@ class TradingController(
     private var priceProvider: CurrentPriceProvider? = null
     private var researchRepository: ResearchRepository? = null
     private val mutable = MutableStateFlow(AppState())
-    val state: StateFlow<AppState> = mutable
+    override val state: StateFlow<AppState> = mutable
 
     init {
         try {
@@ -76,6 +85,8 @@ class TradingController(
             )
             mutable.value =
                 mutable.value.copy(
+                    selected = boundAccount,
+                    history = historyStore?.days().orEmpty(),
                     settings = store.settings(),
                     book = store.strategyBook(),
                     groupAlgorithms = groupRegistry.names,
@@ -125,7 +136,7 @@ class TradingController(
     }
 
     /** 정지 상태에서 키를 교체한다. 이전 계정의 토큰·브로커·조회 결과를 함께 무효화한다. */
-    fun saveCredentials(key: String, secret: String, dart: String) =
+    override fun saveCredentials(key: String, secret: String, dart: String) =
         task("키 저장") {
             check(!state.value.running)
             require(key.isNotBlank() && secret.isNotBlank())
@@ -163,7 +174,7 @@ class TradingController(
         }
 
     /** 그룹/전략 설정은 정지 상태에서만 변경한다. 기록이 있는 그룹의 소유권을 바꾸거나 삭제하지 않는다. */
-    fun saveBook(book: StrategyBook) =
+    override fun saveBook(book: StrategyBook) =
         task("전략 저장") {
             book.validate()
             book.plans.forEach { groupRegistry.get(it.algorithmId) }
@@ -216,7 +227,7 @@ class TradingController(
             .ifEmpty { state.value.settings.symbols }
 
     /** 전략 검증과 암호화 저장 후 구독을 해제한다. 새 종목 목록은 명시적 재연결 때 적용된다. */
-    fun saveSettings(settings: Strategy) =
+    override fun saveSettings(settings: Strategy) =
         task("설정 저장") {
             check(!state.value.running)
             store.saveSettings(settings)
@@ -235,7 +246,7 @@ class TradingController(
         }
 
     /** 연결 버튼 진입점: 준비 상태 초기화 → 인증/계좌 목록 → 잔고·체결 → WebSocket 구독 순서다. 중간 실패는 connected=false를 유지한다. */
-    fun connect() =
+    override fun connect() =
         task("계좌 연결") {
             check(!state.value.running && !state.value.storageError)
             socket?.close()
@@ -323,19 +334,29 @@ class TradingController(
             ) {
                 "사용 가능한 계좌가 없습니다. API 신청 상태를 확인하세요."
             }
-            change {
-                it.copy(accounts = accounts, selected = accounts.first(), quotes = emptyMap())
+            require(accounts.distinct().size == accounts.size)
+            if (discoveryOnly) {
+                change { it.copy(accounts = accounts) }
+                log("계좌 목록 조회 완료 · 계좌별로 연결·전략을 설정하세요.")
+                return@task
             }
+            val selected = boundAccount?.also { require(it in accounts) } ?: accounts.first()
+            change { it.copy(accounts = accounts, selected = selected, quotes = emptyMap()) }
             refreshInternal()
+            if (historyStore != null) syncHistoryPnl()
             subscribeSelectedAccount()
             change { it.copy(connected = true) }
             log("모의투자 연결 완료 · ${accounts.size}개 계좌")
         }
 
     /** 계좌 선택 진입점. 이전 계좌의 가격과 손익을 지우고 새 계좌의 보유종목을 다시 구독한다. */
-    fun select(account: Account) =
+    override fun select(account: Account) =
         task("계좌 전환") {
-            check(!state.value.running && account in state.value.accounts)
+            check(
+                !state.value.running &&
+                    account in state.value.accounts &&
+                    (boundAccount == null || boundAccount == account)
+            )
             socket?.close()
             resetTrackingView()
             change {
@@ -353,6 +374,7 @@ class TradingController(
                 )
             }
             refreshInternal()
+            if (historyStore != null) syncHistoryPnl()
             subscribeSelectedAccount()
             change { it.copy(connected = true) }
         }
@@ -373,7 +395,9 @@ class TradingController(
         val account = state.value.selected ?: error("계좌를 먼저 연결하세요.")
         val sessionBroker = broker ?: error("계좌 연결 필요")
         val portfolio = read { sessionBroker.portfolio(account) }
-        val executions = read { sessionBroker.executions(account, LocalDate.now(SEOUL)) }
+        val date = LocalDate.now(SEOUL)
+        val executions = read { sessionBroker.executions(account, date) }
+        check(portfolio.at.atZone(SEOUL).toLocalDate() == date && LocalDate.now(SEOUL) == date)
         read { groups?.reconcile(account) }
         val groupPositions =
             state.value.book.ledgerGroups().associate {
@@ -387,6 +411,7 @@ class TradingController(
             }
         read {
             withContext(ioDispatcher) {
+                historyStore?.record(date, portfolio, executions, Instant.now())
                 store.snapshot(account, sessionBroker.environment, portfolio)
             }
         }
@@ -397,12 +422,13 @@ class TradingController(
                 executions = executions,
                 orders = store.records(),
                 snapshots = store.snapshots(),
+                history = historyStore?.days().orEmpty(),
             )
         }
     }
 
     /** 사용자 새로고침 요청. 네트워크 오류는 task 경계에서 안전한 앱 문구로 변환한다. */
-    fun refresh() =
+    override fun refresh() =
         task("잔고 조회") {
             check(state.value.connected)
             refreshInternal()
@@ -410,7 +436,7 @@ class TradingController(
         }
 
     /** 정지 상태의 시세 화면에서 요청한 한 종목만 조회한다. 자동매매나 타겟을 생성하지 않는다. */
-    fun refreshPrice(symbol: String) =
+    override fun refreshPrice(symbol: String) =
         task("시세 조회") {
             check(state.value.connected)
             val allowed =
@@ -427,20 +453,31 @@ class TradingController(
         }
 
     /** 계좌 전체의 증권사 손익을 조회한다. 앱의 특정 전략 성과와 구별해서 표시한다. */
-    fun refreshPnl() =
+    override fun refreshPnl() =
         task("손익 조회") {
             check(state.value.connected)
-            val account = state.value.selected ?: error("계좌 연결 필요")
-            val items = read { broker!!.dailyPnl(account) }
-            require(items.map { it.date }.distinct().size == items.size)
-            change {
-                it.copy(pnl = items.sortedBy { row -> row.date }, pnlLoadedAt = Instant.now())
-            }
+            syncHistoryPnl()
             log("최근 30일 증권사 손익 조회 완료")
         }
 
+    /** 계좌 손익 원천값을 덮어쓰기 병합한다. 빈 응답은 과거 기록 삭제가 아니다. */
+    private suspend fun syncHistoryPnl() {
+        val account = state.value.selected ?: error("계좌 연결 필요")
+        val items = read { broker!!.dailyPnl(account) }
+        require(items.map { it.date }.distinct().size == items.size)
+        val at = Instant.now()
+        read { withContext(ioDispatcher) { historyStore?.mergePnl(items, at) } }
+        change {
+            it.copy(
+                pnl = items.sortedBy { row -> row.date },
+                pnlLoadedAt = at,
+                history = historyStore?.days().orEmpty(),
+            )
+        }
+    }
+
     /** 종목-기업 매핑을 검증하고 공식 데이터와 지표를 조합한다. 점수 계산은 매수 승인과 별개다. */
-    fun analyze(corpMapping: String, year: Int, reportCode: String) =
+    override fun analyze(corpMapping: String, year: Int, reportCode: String) =
         task("종목 분석") {
             check(!state.value.running)
             check(state.value.connected)
@@ -493,7 +530,7 @@ class TradingController(
         }
 
     /** TradingService에서만 호출하는 세션 시작점. 매도 동의/매수 근거·미확인 주문을 검사한 뒤 반복 작업을 만든다. */
-    fun startSession() {
+    override fun validateStart() {
         val s = state.value
         check(s.connected && !s.busy && !s.storageError && s.portfolio != null)
         check(monitor != null && priceProvider != null) { "검증된 REST 시세 제공자가 필요합니다." }
@@ -516,13 +553,19 @@ class TradingController(
         ) {
             "미확인 주문을 증권사에서 확인하세요."
         }
-        engine!!.start(s.portfolio)
+    }
+
+    override fun startSession() {
+        validateStart()
+        val s = state.value
+        engine!!.start(s.portfolio!!)
         change { it.copy(running = true) }
         log("모의 자동매매 시작 · 사용자가 정지할 때까지 백그라운드 감시")
         loop =
             scope.launch {
                 try {
                     var nextBalance = 0L
+                    var nextPnl = 0L
                     // 서비스가 수명을 소유한다. 화면 종료나 임의의 시간 제한으로 매매를 끊지 않는다.
                     // OS 종료·네트워크/원장 오류는 여전히 안전 정지하며 주문을 자동 재전송하지 않는다.
                     while (isActive && state.value.running) {
@@ -530,6 +573,10 @@ class TradingController(
                         if (nanos >= nextBalance) {
                             refreshInternal()
                             nextBalance = System.nanoTime() + 15_000_000_000L
+                        }
+                        if (nanos >= nextPnl) {
+                            syncHistoryPnl()
+                            nextPnl = System.nanoTime() + 900_000_000_000L
                         }
                         val watched =
                             (configuredSymbols() +
@@ -575,7 +622,7 @@ class TradingController(
     }
 
     /** 엔진 플래그를 먼저 내리고 반복 작업을 취소한다. 완료되기 전에는 데이터 삭제/재시작을 막는다. 기존 증권사 주문 취소는 아니다. */
-    fun stop(reason: String = "사용자 요청으로 자동매매 정지") {
+    override fun stop(reason: String) {
         connectionId++
         engine?.stop()
         val stopping = loop?.isCompleted == false || actionJob?.isCompleted == false
@@ -599,7 +646,7 @@ class TradingController(
     }
 
     /** 읽기 요청 취소도 기존 연결을 종료한다. 늦은 응답이 연결 상태를 되살리지 못한다. */
-    fun cancelRequest() {
+    override fun cancelRequest() {
         if (state.value.busy && !state.value.running) stop("요청 취소 · 계좌를 다시 연결하세요.")
     }
 
@@ -613,7 +660,7 @@ class TradingController(
     }
 
     /** 사용자 확인 후 로컬 데이터를 지운다. 진행 중인 네트워크 결과가 삭제한 저널을 재생성하지 않도록 작업 종료를 확인한다. */
-    fun deleteAll() {
+    override fun deleteAll() {
         if (loop?.isCompleted == false || state.value.busy) {
             log("진행 중인 요청이 끝날 때까지 기다리세요.")
             return
@@ -635,6 +682,12 @@ class TradingController(
                 message = "기기 내 키와 기록을 삭제했습니다. 증권사 기록은 유지됩니다.",
             )
         }
+    }
+
+    /** 계좌 실행 객체 폐기. 소켓과 작업 종료 뒤 소유자 참조를 버린다. */
+    override fun dispose() {
+        stop()
+        scope.cancel()
     }
 
     /** 화면 액션의 직렬 진입 경계. 실행 중에는 반복 작업만 조회를 소유한다. 중복 클릭을 막고 busy를 복구하며 취소는 호출자에게 전파한다. */

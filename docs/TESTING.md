@@ -64,3 +64,8 @@ Android 테스트는 실사용 설치에서 실행하지 않는다. 실제 실�
 - `UiInstrumentedTest`, `WorkspaceInstrumentedTest`: 새 메뉴명, 페이지 복귀 시 선택 탭, 계좌/주문 필터, 타겟 분리와 지연 시세 표시.
 
 화면 자료는 연결 전 UI 또는 명시적인 합성 계좌/시세만 사용한다. 기본/130% 글꼴 확대 검증은 별도 UI 실행으로 수행하며 실제 결과만 VERIFICATION.md에 기록한다.
+
+
+## 요청 25 검증 시나리오
+
+`HistoryAnalyticsTest`: 달/연도 경계, 미조회/0 구분, 큰 금액 합계, 입금과 손익 분리. `MultiAccountTest`: 여러 enable 동시 시작, 사전검증 실패의 부분 시작 금지, 선택 후 지연 데이터 격리, enable 저장 실패, 타 계좌 요청 중 키/삭제 차단. `ControllerAsyncTest`: boundAccount 외 소유권 전환/접근 거절. `AccountHistoryInstrumentedTest`: 계좌별 Keystore 파일/AAD, 반복 누적 체결 교체, 날짜/계좌별 같은 주문번호, 과거 손익 보존, 미확인 주문 이전. `HistoryUiTest`: 일/월/연 통계·상세·계좌 선택. 실제 수행 결과는 VERIFICATION.md이며 테스트 정의 자체는 통과 증거가 아니다.

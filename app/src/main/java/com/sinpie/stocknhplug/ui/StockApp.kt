@@ -89,8 +89,9 @@ fun LockScreen(unlock: () -> Unit) {
 
 /** 인증 후 UI 진입점. StateFlow를 구독하고 사용자 이벤트만 컨트롤러/서비스에 위임한다. */
 @Composable
-fun StockApp(controller: TradingController, start: () -> Unit, stop: () -> Unit) {
+fun StockApp(controller: TradingWorkspace, start: () -> Unit, stop: () -> Unit) {
     val state by controller.state.collectAsState()
+    val accountCommands = controller.accountWorkspace(state.selected)
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var settings by remember { mutableStateOf(false) }
     var confirm by remember { mutableStateOf(false) }
@@ -110,7 +111,7 @@ fun StockApp(controller: TradingController, start: () -> Unit, stop: () -> Unit)
                     Text("StockNHPlug", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     Text("자동투자", fontSize = 11.sp, color = Muted)
                 }
-                Badge(if (state.running) "운용 중" else "모의", Teal)
+                Badge(if (state.fleetRunning || state.running) "운용 중" else "모의", Teal)
                 IconButton({ settings = true }) { Icon(Icons.Outlined.Settings, "보안 및 연결 설정") }
             }
         },
@@ -129,11 +130,18 @@ fun StockApp(controller: TradingController, start: () -> Unit, stop: () -> Unit)
                         fontSize = 12.sp,
                     )
                     if (state.operation != null && !state.running)
-                        TextButton(controller::cancelRequest) { Text("취소") }
+                        TextButton({
+                            if (state.accountRuns.any { it.account == state.selected && it.busy })
+                                accountCommands.cancelRequest()
+                            else controller.cancelRequest()
+                        }) {
+                            Text("취소")
+                        }
                 }
             }
+            if (state.accountRuns.isNotEmpty()) AccountSelector(state, controller::select)
             StatusBanner(state.message, state.messageError || state.storageError)
-            pageState.SaveableStateProvider(tab) {
+            pageState.SaveableStateProvider("${state.accounts.indexOf(state.selected)}:$tab") {
                 val contentScroll = rememberScrollState()
                 val uiScope = rememberCoroutineScope()
                 Column(
@@ -146,26 +154,40 @@ fun StockApp(controller: TradingController, start: () -> Unit, stop: () -> Unit)
                             Dashboard(
                                 state,
                                 { settings = true },
-                                { controller.refresh() },
+                                { accountCommands.refresh() },
                                 { confirm = true },
                                 stop,
                             )
                         1 ->
-                            StrategyGroupsScreen(
+                            if (state.accountRequired) {
+                                Heading("전략 관리", "계좌별 전략·그룹·위험 한도")
+                                Panel { Text("설정에서 계좌 목록을 조회하고 관리할 계좌를 선택하세요.") }
+                            } else
+                                StrategyGroupsScreen(
+                                    state,
+                                    accountCommands::saveBook,
+                                    onNavigate = { uiScope.launch { contentScroll.scrollTo(0) } },
+                                ) {
+                                    StrategyScreen(state, accountCommands::saveSettings)
+                                }
+                        2 ->
+                            MarketWorkspace(
                                 state,
-                                controller::saveBook,
-                                onNavigate = { uiScope.launch { contentScroll.scrollTo(0) } },
-                            ) {
-                                StrategyScreen(state, controller::saveSettings)
-                            }
-                        2 -> MarketWorkspace(state, controller::analyze, controller::refreshPrice)
-                        3 -> AssetsWorkspace(state, controller::refresh, controller::refreshPnl)
+                                accountCommands::analyze,
+                                accountCommands::refreshPrice,
+                            )
+                        3 ->
+                            AssetsWorkspace(
+                                state,
+                                accountCommands::refresh,
+                                accountCommands::refreshPnl,
+                            )
                         4 -> ActivityWorkspace(state)
                     }
                     Spacer(Modifier.height(12.dp))
                 }
             }
-            if (state.running)
+            if (state.fleetRunning || state.running)
                 Button(
                     stop,
                     Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
@@ -184,7 +206,7 @@ fun StockApp(controller: TradingController, start: () -> Unit, stop: () -> Unit)
             title = { Text("모의 자동매매 시작") },
             text = {
                 Text(
-                    "설정된 예산과 손절·익절 조건으로 주문합니다. 보유종목 관리에 동의하면 기존 보유종목도 매도할 수 있습니다.\n\n다른 앱 사용 중에도 알림과 함께 실행되며, 통신 장애·앱 강제 종료 시 보호 주문을 보장할 수 없습니다. 미체결 주문은 정지 후에도 증권사에서 확인하세요.\n\n수정주가·뉴스 검증 전 신규 매수는 차단됩니다."
+                    "자동운용을 켠 모든 계좌에 계좌별 설정을 적용합니다. 미준비 계좌가 있으면 시작을 중단합니다.\n\n설정된 예산과 손절·익절 조건으로 주문합니다. 보유종목 관리에 동의하면 기존 보유종목도 매도할 수 있습니다.\n\n다른 앱 사용 중에도 알림과 함께 실행되며, 통신 장애·앱 강제 종료 시 보호 주문을 보장할 수 없습니다. 미체결 주문은 정지 후에도 증권사에서 확인하세요.\n\n수정주가·뉴스 검증 전 신규 매수는 차단됩니다."
                 )
             },
             confirmButton = {
@@ -324,19 +346,22 @@ private fun Dashboard(
         )
         Text("평일 09:05–15:15 · 현금 지정가 IOC · 파킹은 별도 회차 한도", fontSize = 11.sp, color = Muted)
         Button(
-            if (s.running) stop else start,
+            if (s.fleetRunning || s.running) stop else start,
             Modifier.fillMaxWidth().heightIn(min = 48.dp),
             enabled =
-                s.connected &&
-                    s.groupExecutionReady &&
-                    !s.busy &&
-                    !s.storageError &&
-                    (s.book.parking.enabled ||
-                        s.book.groups.any { g ->
-                            g.enabled && s.book.plans.any { p -> p.id == g.strategyId && p.enabled }
-                        }),
+                if (s.accountRuns.isNotEmpty()) s.fleetRunning || s.fleetCanStart
+                else
+                    s.connected &&
+                        s.groupExecutionReady &&
+                        !s.busy &&
+                        !s.storageError &&
+                        (s.book.parking.enabled ||
+                            s.book.groups.any { g ->
+                                g.enabled &&
+                                    s.book.plans.any { p -> p.id == g.strategyId && p.enabled }
+                            }),
         ) {
-            Text(if (s.running) "자동매매 정지" else "모의 자동매매 시작")
+            Text(if (s.fleetRunning || s.running) "자동매매 정지" else "모의 자동매매 시작")
         }
     }
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {

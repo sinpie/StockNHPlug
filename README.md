@@ -31,6 +31,12 @@ flowchart TB
  PORT --> LOCAL[LocalStore / SecureVault / Android Keystore]
 ```
 
+## 계좌별 운용과 통계
+
+[통계 화면 미리보기](docs/images/history-statistics.png) · [130% 글꼴](docs/images/history-statistics-130.png) — 합성 테스트 자료입니다.
+
+설정에서 계좌 목록을 조회하고 각 계좌를 연결·설정한 뒤 자동운용 대상 계좌를 켭니다. 시작은 켠 계좌 전체, 화면 선택은 조회 대상만 바꿉니다. 자산 → 통계에서 일/월/연 손익과 일별 현금·거래 기록을 확인합니다. [계좌 격리·보존·계산 기준과 제한](docs/ACCOUNT_HISTORY.md). 기존 자동주문 검증 잠금은 유지합니다.
+
 ## 문서
 
 - [사용자 요청 원문 누적 기록](docs/USER_REQUESTS.md) — 새 요청은 실행 전에 원문으로 추가합니다.

@@ -148,3 +148,8 @@ submit → validateDispatch → expiresAt 포함 OrderIntent 생성 → reserve 
 # 2026-09-20 UI 액션 경계
 
 화면 이벤트 → `task(label)`의 선행 busy 설정 → actionJob 시작 → `read`의 단계별 timeout → 취소/연결 세대 검증 → 상태 교체 → 완료 핸들러 정리. 정지/취소는 actionJob과 거래 루프를 취소하고 connectionId/generation을 갱신한다. 이전 REST/WS 콜백은 새 연결의 화면·추적 상태를 채우지 못한다. 자세한 순서도와 화면별 검토는 [ASYNC_REVIEW.md](ASYNC_REVIEW.md).
+
+
+## 요청 25 진입 흐름
+
+설정 → discoverAccounts → 공식 계좌 목록 → 디렉터리 저장 → 계좌별 factory 생성. 선택 → 해당 runtime의 StateFlow만 UI에 표시. 연결 → boundAccount가 공식 목록에 있는지 확인 → 잔고/체결 → AccountHistoryStore.record → 최근 손익 mergePnl → 구독 준비. 서비스 시작 → enable 계좌 전체 validateStart → 각 runtime.startSession. 서비스 정지 → 모든 runtime.stop. 통계는 선택 계좌 history → HistoryAnalytics → 일/월/연 화면이며 주문 엔진으로 돌아가지 않는다. 상세는 [계좌별 흐름도](ACCOUNT_HISTORY.md).

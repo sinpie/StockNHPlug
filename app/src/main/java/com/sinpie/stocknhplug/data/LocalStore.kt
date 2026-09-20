@@ -205,7 +205,7 @@ class LocalStore(private val vault: SecureVault) : OrderJournal {
         }
     }
 
-    /** 하루 마지막 조회를 교체하고 전체 최근 365건을 유지한다. 같은 날 중복 누적을 방지한다. */
+    /** 하루 마지막 조회를 교체한다. 연도별 비교를 위해 보존일 수를 자르지 않는다. */
     @Synchronized
     fun snapshot(account: Account, environment: Environment, portfolio: Portfolio) {
         val today = portfolio.at.atZone(SEOUL).toLocalDate()
@@ -216,7 +216,7 @@ class LocalStore(private val vault: SecureVault) : OrderJournal {
                         it.environment == environment &&
                         it.portfolio.at.atZone(SEOUL).toLocalDate() == today
                 } + HoldingSnapshot(account.number, environment, portfolio, account.brokerId))
-                .takeLast(365)
+                .sortedBy { it.portfolio.at }
         vault.write(
             "snapshot",
             JSONObject()

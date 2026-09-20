@@ -229,11 +229,12 @@ fun PriceTrackingScreen(s: AppState, refresh: (String) -> Unit) {
 fun AssetsWorkspace(s: AppState, refresh: () -> Unit, pnl: () -> Unit) {
     var section by rememberSaveable { mutableIntStateOf(0) }
     Heading("자산", "${s.selected?.masked ?: "계좌 연결 전"} · 보유 현황과 계좌 손익")
-    SectionTabs(listOf("잔고", "손익", "이력"), section) { section = it }
+    SectionTabs(listOf("잔고", "손익", "이력", "통계"), section) { section = it }
     when (section) {
         0 -> HoldingsScreen(s, refresh)
         1 -> HistoryScreen(s, pnl, 2)
         2 -> HistoryScreen(s, pnl, 3)
+        3 -> HistoryScreen(s, refresh, pnl)
     }
 }
 
@@ -246,7 +247,7 @@ fun ActivityWorkspace(s: AppState) {
     Heading("거래 내역", "주문 접수와 실제 체결을 구분해 확인하세요.")
     SectionTabs(listOf("주문", "체결", "로그"), section) { section = it }
     if (section == 0) {
-        if (s.selected != null)
+        if (s.selected != null && s.accountRuns.isEmpty())
             FilterChip(allAccounts, { allAccounts = !allAccounts }, label = { Text("전체 계좌") })
         val account = s.selected
         val rows =

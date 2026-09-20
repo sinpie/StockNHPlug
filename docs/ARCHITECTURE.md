@@ -26,7 +26,7 @@ GroupAlgorithmRegistry는 AppContainer에서 주입합니다. GroupExecutionSour
 
 ## 0. 조립·교체 계약
 
-`AppContainer`는 Android applicationContext를 소유하는 의존성 조립 지점입니다. `TradingController(ApplicationStorage, SessionFactory, TradingStrategy, ExecutionGate)`를 생성하고 Activity/Service에 동일 객체를 제공합니다. 구현 교체 방법과 제약은 [EXTENDING.md](EXTENDING.md)에 정리합니다.
+`AppContainer`는 Android applicationContext를 소유하는 의존성 조립 지점입니다. `MultiAccountController`와 계좌별 `TradingController`를 생성하고 Activity/Service에 동일 `TradingWorkspace`를 제공합니다. 구현 교체 방법과 제약은 [EXTENDING.md](EXTENDING.md)에 정리합니다.
 
 - `ApplicationStorage` → `EncryptedAppStorage`: 응용 저장 포트와 Keystore/LocalStore 어댑터. 키 원문 조회는 응용/UI에 노출하지 않습니다.
 - `SessionFactory` → `BrokerSession`: Broker, MarketStream, ResearchRepository를 연결마다 생성합니다. 컨트롤러가 NH/DART 객체를 직접 만들지 않습니다.
@@ -115,7 +115,7 @@ HTTP 성공과 업무 성공을 구분합니다. 오류 문구/심각도와 응�
 - `Account`: 증권사 ID/환경/계좌번호를 정규화합니다. NH 계좌 타입 코드는 어댑터 내부에만 둡니다.
 - `OrderIntent`, `OrderRecord`, `OrderStatus`: 앱 주문 저널. 앱 UUID와 증권사 시장주문번호를 별개로 저장합니다. brokerId를 저장해 같은 계좌번호의 다른 증권사 주문을 섞지 않습니다.
 - `SecureVault`: Android Keystore AES-256-GCM, 무작위 96비트 IV, 파일명 AAD, 버전 1 바이너리, AtomicFile. 키·토큰·설정·저널·로그 모두 앱 전용 noBackupFilesDir에 암호화됩니다.
-- `LocalStore`: 원자적 주문 예약·상태 변경·설정 보관. 앱 이벤트는 500개 순환 저장, 저널은 사용자 삭제 전 유지. 보유 스냅샷은 증권사/계좌/환경/일자별 최신 값으로 교체하며 전체 최근 365개를 암호화 보관합니다. 암호문 손상은 거래 잠금으로 처리합니다.
+- `LocalStore`: 원자적 주문 예약·상태 변경·설정 보관. 앱 이벤트는 500개 순환 저장, 저널은 사용자 삭제 전 유지. 보유 스냅샷은 증권사/계좌/환경/일자별 최신 값으로 교체하며 사용자 삭제 전까지 암호화 보관합니다. 암호문 손상은 거래 잠금으로 처리합니다.
 
 ## 6. 화면 (`ui`, `MainActivity`)
 
@@ -142,3 +142,10 @@ HTTP 성공과 업무 성공을 구분합니다. 오류 문구/심각도와 응�
 `AccountAnalytics`는 읽기 전용 `HoldingMetric`, 호가 스프레드와 비율을 계산한다. UI는 이 응용 함수를 사용하고 매매 레이어 계산은 변경하지 않는다. `FinancialPanels.kt`가 비중/호가/실제 종가 차트, `SettingsScreen.kt`가 계좌·시세·보안 편집을 소유한다.
 
 `TradingController`는 actionJob, generation, connectionId로 요청·콜백 수명을 소유한다. AppState의 operation/progress/messageError/pnlLoadedAt은 비밀값 없이 조회 상태를 표현한다. dispatcher와 IO dispatcher 주입은 실제 지연·취소 순서를 테스트하기 위한 구성 지점이다. `HybridPriceMonitor.clear`는 generation을 변경해 이전 REST 결과 반영을 막는다. [상세 흐름](ASYNC_REVIEW.md).
+
+
+## 요청 25: 계좌 런타임과 이력
+
+`AppContainer.controller`는 이제 `TradingWorkspace` 포트의 `MultiAccountController`다. root `TradingController(discoveryOnly=true)`는 계좌 목록/공유 키만 처리한다. `AccountRuntimeFactory`는 계좌별 `TradingController(boundAccount=...)`와 전용 vault/게이트를 생성한다. MainActivity/TradingService는 포트를 공유하고 서비스는 fleetRunning을 관찰한다. `AccountRun`은 표시용 enable/연결/실행/처리 상태다. 계좌 선택은 기존 런타임을 재연결하지 않는다.
+
+`AccountDirectory`/`EncryptedAccountDirectory`는 활성 대상 목록, `AccountHistoryStore`/`EncryptedAccountHistory`는 `AccountDay` 날짜별 관측 기록, `HistoryAnalytics`는 UI용 순수 집계를 소유한다. `AccountMigration`은 구 공용 저장소에서 식별 가능한 기록만 계좌별 복사한다. `SecureVault(context, account)`는 namespace를 AAD와 디렉터리에 적용한다. `EncryptedAppStorage`도 주문·스냅샷의 계좌 일치를 검사한다. 구체적인 함수 흐름·계산·이전 규칙은 [ACCOUNT_HISTORY.md](ACCOUNT_HISTORY.md).

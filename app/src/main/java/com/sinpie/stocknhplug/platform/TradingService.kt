@@ -7,13 +7,13 @@ import android.os.*
 import com.sinpie.stocknhplug.AppContainer
 import com.sinpie.stocknhplug.MainActivity
 import com.sinpie.stocknhplug.R
-import com.sinpie.stocknhplug.application.TradingController
+import com.sinpie.stocknhplug.application.TradingWorkspace
 import kotlinx.coroutines.*
 
 /** User-visible background session; OS process termination never restarts order placement. */
 class TradingService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private lateinit var controller: TradingController
+    private lateinit var controller: TradingWorkspace
     private var observer: Job? = null
 
     /** UI와 동일한 프로세스 컨트롤러를 연결한다. 새로운 별도 매매 엔진을 생성하지 않는다. */
@@ -53,7 +53,7 @@ class TradingService : Service() {
             Notification.Builder(this, "trading")
                 .setSmallIcon(R.drawable.ic_launcher)
                 .setContentTitle("모의 자동매매 실행 중")
-                .setContentText("백그라운드 가격 추적 · 알림에서 즉시 정지 가능")
+                .setContentText("활성 계좌 동시 감시 · 즉시 정지는 모든 계좌에 적용")
                 .setVisibility(Notification.VISIBILITY_PRIVATE)
                 .setOngoing(true)
                 .setContentIntent(open)
@@ -63,10 +63,13 @@ class TradingService : Service() {
             if (Build.VERSION.SDK_INT >= 34)
                 startForeground(7, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
             else startForeground(7, notification)
-            if (!controller.state.value.running) controller.startSession()
+            controller.startSession()
             // 반복 시작 intent가 상태 관찰자를 누적하지 않도록 하나만 유지한다.
             if (observer?.isActive != true)
-                observer = scope.launch { controller.state.collect { if (!it.running) stopSelf() } }
+                observer =
+                    scope.launch {
+                        controller.state.collect { if (!it.fleetRunning && !it.running) stopSelf() }
+                    }
         } catch (_: Exception) {
             controller.stop("실행 조건을 확인하세요. 자동매매를 시작하지 않았습니다.")
             stopSelf()
