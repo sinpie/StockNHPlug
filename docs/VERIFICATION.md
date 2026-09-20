@@ -2,6 +2,8 @@
 
 ## 2026-09-20 · 요청 25 계좌 분리·기간 통계
 
+- 구현 `61860cd`의 [GitHub CI 35509909704](https://github.com/sinpie/StockNHPlug/actions/runs/35509909704) 성공. Ubuntu/JDK 17의 JVM·린트·Debug APK·Release AAB·계층/출처 검사 및 산출물 업로드 통과. Android 기기 시험은 로컬 결과다. 기존 Node 20 actions 전환·setup-java v4 폐기 예정·ubuntu-latest 변경 안내는 남아 있다.
+
 - `testDebugUnitTest lintDebug assembleDebug bundleRelease connectedDebugAndroidTest`: 성공. JVM 112개 실패/오류 0, Android API 30 XML 25개 중 24개 통과·실제 키 opt-in 1개 의도적 제외. 콘솔의 중복 종료 개수 대신 XML 고유 testcase를 확인했다.
 - 계좌별 설정과 암호문 AAD 격리, 같은 날짜 누적 체결 교체, 계좌/연도가 다른 같은 주문번호, 과거 손익 유지, 미확인 주문 이전, UI 기간/상세/계좌 전환을 검사했다. 여러 계좌 동시 시작·부분 시작 금지·요청 중 전역 키/삭제 차단은 가짜 runtime 및 JVM 회귀로 확인했다. 실제 증권사 다중 주문 검증이 아니다.
 - 초기 Kotlin Long/Int 동등 비교 컴파일 오류를 수정했다. 계층·출처·문서 링크 검사 통과. 린트 오류 0/버전 경고 14. 실제 키·주문은 사용하지 않았으며 다중 NH 소켓/장중 주문·장시간 백그라운드는 여전히 미검증이다.
