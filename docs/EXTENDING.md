@@ -1,5 +1,9 @@
 # API·데이터·전략 교체 안내
 
+## 인증·조회 어댑터의 실서버 경계
+
+실제 키 시험에서 서버가 인증 Content-Type의 charset 유무를 구별하고, 충분한 일봉 창에도 이전 자료 continuation을 반환하는 것을 확인했습니다. 다른 API로 교체할 때도 wire 형식과 페이지 의미를 해당 공식 명세/실서버에서 검증하세요. NH 전용 `NhAuthentication`, `NhEndpoints`, `historyWindow`를 다른 공급자의 규칙으로 일반화하지 않습니다. 특히 bounded 연구 데이터 창과 전체 잔고/체결의 완결성을 구분하고, 연구 창 예외가 공통 주문 저널·위험 검사 또는 계좌 대사를 우회해서는 안 됩니다. 기존 `Broker`, `PriceHistoryProvider` 등의 포트 계약과 AppContainer 조립 위치는 유지합니다.
+
 기준일: 2026-09-19. 현재 구현은 NHPlug 모의 API와 `TechnicalStrategy` 한 종류를 조립합니다. 다른 증권사의 실제 어댑터나 전략 선택 UI를 제공한다는 뜻은 아닙니다. 아래 포트를 구현하고 `AppContainer`의 조립을 바꾸면 응용/안전 엔진을 유지하면서 교체할 수 있습니다. 원격 플러그인 다운로드나 실행 중 교체는 허용하지 않습니다.
 
 ## 교체 단위

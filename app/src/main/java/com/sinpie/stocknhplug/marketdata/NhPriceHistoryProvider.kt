@@ -14,8 +14,7 @@ class NhPriceHistoryProvider(private val transport: NhTransport) : PriceHistoryP
     override suspend fun history(symbol: String): PriceHistory {
         val today = LocalDate.now(SEOUL)
         val j =
-            transport.call(
-                "/krstock/quote/v1/period",
+            transport.historyWindow(
                 json(
                     "market_cd" to "KRX",
                     "iem_cd" to symbol,
@@ -30,6 +29,7 @@ class NhPriceHistoryProvider(private val transport: NhTransport) : PriceHistoryP
         val candles =
             j.getJSONArray("Output_1")
                 .objects()
+                .take(250)
                 .map { c ->
                     // The published spec does not guarantee a total-return adjustment basis.
                     // Research

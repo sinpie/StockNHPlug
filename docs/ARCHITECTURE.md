@@ -1,5 +1,15 @@
 # 계층과 클래스 상세
 
+## 실제 키 조회 진단과 인증 요청
+
+`NhEndpoints.base`는 공식 명세에서 확인한 currentPrice/period만 운영 시세 서버로 지정합니다. 나머지 경로는 선택 환경을 유지합니다. 서비스/전략이 URL을 선택하거나 오류에 따라 주문 서버를 바꾸지 않습니다.
+
+`NhTransport.historyWindow`는 일봉의 명시적 최근 N개(1~250) 요청입니다. `NhHistoryWindow.complete`가 해당 period 경로에서 요청 개수를 모두 받았는지 판단합니다. 모두 받은 경우 더 오래된 자료의 continuation은 현재 창을 불완전하게 만들지 않습니다. 개수가 부족한 연속 페이지는 실패하며, 잔고/체결 등 다른 경로에는 이 예외를 허용하지 않습니다. `NhPriceHistoryProvider`는 최대 250개 원본 봉을 정렬해 반환하고 수정주가 표시는 하지 않습니다.
+
+`NhAuthentication.request`는 인증 URL/빈 바이트 본문/Content-Type을 구성하는 NH infrastructure 내부 헬퍼입니다. `NhTransport.tokenLocked`가 호출하며 캐시·암호화·호출 직렬화 책임은 기존과 같습니다. 포트 및 AppContainer 조립은 변경하지 않습니다. `NhAuthenticationTest`는 MockWebServer에서 실제 전송 헤더와 빈 본문을 검사합니다.
+
+`CredentialProbeTest`: opt-in/빈 disposable 저장소 확인 → 일회성 암호문 수신 → SecureVault → 앱 NH/OpenDART 어댑터 인증·조회 → 비식별 단계 상태 → 키/파일 정리. 생산 UI/서비스/주문 진입점을 호출하지 않으며 일반 테스트에서는 건너뜁니다. 개별 probe 상태로 결과를 판단하고 JUnit 종료를 모든 외부 API 성공으로 해석하지 않습니다.
+
 ## 빌드·테스트 배포 책임
 
 `app/build.gradle.kts`의 `previewRelease` 속성은 release 변형의 ID/표시 이름만 테스트용으로 격리합니다. 응용·매매·실행 계층과 실거래 잠금은 그대로입니다. `scripts/package_test_apks.py.main`은 이미 빌드된 APK를 검사 → 외부 테스트 keystore로 서명 → 서명 검증 → SHA-256/검증 JSON 생성 순서로 처리합니다. 키 생성·Gradle 실행·GitHub 업로드는 수행하지 않습니다. 설치/키 입력/제한은 [TESTING.md](TESTING.md)에 정리합니다.

@@ -1,5 +1,9 @@
 # 테스트 배포 안내
 
+2026-09-20 추가: 실제 키 시험에서 NH 인증 Content-Type 및 일봉 서버 선택 오류를 발견해 수정했습니다. 이전 `0.1.0-preview.1` 로컬 APK에는 이 수정이 없습니다. 현재 소스로 다시 빌드한 APK와 VERIFICATION.md의 최신 결과를 기준으로 판단하세요.
+
+실제 키 통합 진단은 `CredentialProbeTest`를 명시적으로 선택한 disposable Debug 설치에서만 수행합니다. 기본 Android 테스트는 이 진단을 건너뛰며 CI에는 실제 키를 전달하지 않습니다. 기기 일회성 RSA-OAEP SHA-256/MGF1-SHA-256 공개키를 ADB로 읽고, `4-byte big-endian RSA ciphertext length + RSA-wrapped AES-256 key + 12-byte IV + AES-GCM ciphertext/tag`를 ADB stdin으로 캐시에 전달합니다. AAD는 `StockNHPlug read-only probe v1`입니다. 완성된 암호문 파일을 원자적으로 rename한 뒤에만 테스트가 읽습니다. 호스트 원본 키 경로나 복호화 도구는 공개 저장소에 넣지 않습니다. 테스트 APK/인자를 실제 사용자의 설치에 적용하지 마세요. 정상 결과와 제한은 VERIFICATION.md에 기록했습니다.
+
 현재 전체 자동매매가 완료된 제품이 아닙니다. 실제 NH 계좌의 그룹 주문·체결 대사, 수정주가 검증 및 뉴스 이용권한이 준비되지 않아 자동주문을 잠가 두었습니다. 배포본 준비는 공개 완료 또는 Play 출시 승인을 의미하지 않습니다. 공개 여부는 GitHub Releases와 VERIFICATION.md를 확인하세요.
 
 ## APK 선택과 설치

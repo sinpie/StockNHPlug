@@ -1,5 +1,15 @@
 # 보안 설계
 
+## 실제 키 조회 시험
+
+일봉 window 예외는 period 경로·일봉 구분·명시한 개수(1~250)가 일치하고 실제 수신 개수가 충족될 때만 허용합니다. 주문·잔고·체결의 불완전 페이지를 성공으로 취급하지 않습니다.
+
+`CredentialProbeTest`는 androidTest 전용이며 `credentialProbe=1`로 명시한 disposable Debug 설치에서만 실행합니다. 기존 암호화 데이터가 있으면 중단합니다. 기기에서 생성한 일회성 RSA 공개키로 AES-GCM 전달 키를 감싸고 ADB stdin으로 암호문만 전달합니다. 개인키/복호화 자격증명은 메모리에서 사용하며 기기 저장은 SecureVault만 사용합니다. 예외 메시지·URL·응답 본문·계좌/금액/토큰을 출력하지 않고 단계 상태와 엄격히 추출한 HTTP 코드만 기록합니다.
+
+주문/취소/서비스 시작을 호출하지 않습니다. 종료 시 시험이 생성한 credentials/token과 파일/Keystore 키를 제거하고 새로 설치한 disposable 앱을 제거합니다. 서버 토큰 폐기를 의미하지 않습니다. 원본 설정은 변경하지 않습니다. 호스트 복호화/전달 도구와 개인 경로는 커밋하지 않습니다. JVM/Python 문자열의 메모리 완전 삭제는 보장하지 않습니다.
+
+NH 인증은 정확한 `application/x-www-form-urlencoded`와 빈 바이트 본문을 사용합니다. 문자열 본문에서 자동 추가된 charset 때문에 실제 인증이 403으로 거절되는 문제를 수정했습니다. 인증 URL은 공식 발급자 HTTPS로만 전송하고 출력하지 않습니다.
+
 ## 테스트 APK 서명과 격리
 
 `previewRelease=true`는 release 빌드에 `.preview` ID와 Preview 앱 이름을 적용합니다. Debug는 `.debug` ID와 Debug 이름을 사용합니다. API 키/Keystore/데이터는 UID별로 격리됩니다. Preview도 실거래 잠금을 유지합니다.

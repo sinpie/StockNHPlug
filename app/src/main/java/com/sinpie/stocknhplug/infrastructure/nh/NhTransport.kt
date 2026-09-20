@@ -29,9 +29,6 @@ class NhTransport(private val vault: SecureVault, val environment: Environment) 
             .build()
     private val gate = Mutex()
     private var lastCall = 0L
-    private val base =
-        if (environment == Environment.MOCK) "https://moapi.nhplug.com:8443"
-        else "https://api.nhplug.com:8443"
 
     /** WebSocket에서 사용할 토큰을 반환한다. 캐시 접근도 같은 gate로 보호한다. */
     suspend fun token(): String = withContext(Dispatchers.IO) { gate.withLock { tokenLocked() } }
@@ -49,22 +46,11 @@ class NhTransport(private val vault: SecureVault, val environment: Environment) 
         if (saved != null && saved.getLong("expires") > System.currentTimeMillis() + 60_000)
             return saved.getString("value")
         val credentials = vault.read("credentials") ?: error("앱키를 먼저 저장하세요.")
-        val url =
-            "https://api.nhplug.com:8443/oauth2/token"
-                .toHttpUrl()
-                .newBuilder()
-                .addQueryParameter("appkey", credentials.getString("key"))
-                .addQueryParameter("appsecretkey", credentials.getString("secret"))
-                .addQueryParameter("grant_type", "client_credentials")
-                .addQueryParameter("scope", "oob")
-                .build()
+        val request = NhAuthentication.request(credentials.getString("key"), credentials.getString("secret"))
         throttle()
         client
             .newCall(
-                Request.Builder()
-                    .url(url)
-                    .post("".toRequestBody("application/x-www-form-urlencoded".toMediaType()))
-                    .build()
+                request
             )
             .execute()
             .use { r ->
@@ -93,10 +79,15 @@ class NhTransport(private val vault: SecureVault, val environment: Environment) 
         input: JSONObject,
         paginate: Boolean = false,
         dispatchGuard: () -> Unit = {},
+        historyWindowRows: Int? = null,
     ): List<JSONObject> =
         withContext(Dispatchers.IO) {
             gate.withLock {
                 require(path.startsWith("/krstock/") || path == "/n2/acctinfo")
+                if (historyWindowRows != null) {
+                    require(path == "/krstock/quote/v1/period" && historyWindowRows in 1..250)
+                    require(input.getInt("array_cnt") == historyWindowRows && input.getString("gubun") == "1")
+                }
                 val token = tokenLocked()
                 var cts = ""
                 val seen = mutableSetOf<String>()
@@ -107,12 +98,7 @@ class NhTransport(private val vault: SecureVault, val environment: Environment) 
                     dispatchGuard()
                     val request =
                         Request.Builder()
-                            // 공식 currentPrice는 live 시세 서버 전용이다. 주문 경로는 환경 base를 유지한다.
-                            .url(
-                                (if (path == "/krstock/quote/v1/currentPrice")
-                                    "https://api.nhplug.com:8443"
-                                else base) + path
-                            )
+                            .url(NhEndpoints.base(environment, path) + path)
                             .header("Authorization", "Bearer $token")
                             .post(
                                 JSONObject()
@@ -131,8 +117,13 @@ class NhTransport(private val vault: SecureVault, val environment: Environment) 
                         val more =
                             r.header("cts_flag") == "Y" ||
                                 j.optString("rsp_cd") in setOf("00165", "00218")
-                        cts = if (more) r.header("cts").orEmpty() else ""
-                        if (more) {
+                        // Historical candles request a bounded recent window, not all history.
+                        // A full requested window is complete even when older candles exist.
+                        // No other query (especially balances/fills) may use this exception.
+                        val completeWindow = NhHistoryWindow.complete(path, historyWindowRows,
+                            j.optJSONArray("Output_1")?.length() ?: 0)
+                        cts = if (more && !completeWindow) r.header("cts").orEmpty() else ""
+                        if (more && !completeWindow) {
                             check(
                                 paginate && cts.isNotBlank() && seen.add(cts) && result.size < 100
                             ) {
@@ -147,6 +138,40 @@ class NhTransport(private val vault: SecureVault, val environment: Environment) 
 
     /** 단일 응답 전용 편의 함수. 페이지가 더 필요한 호출은 pages(..., paginate=true)를 사용한다. */
     suspend fun call(path: String, input: JSONObject) = pages(path, input).single()
+
+    /** Explicit recent daily-candle window; partial pages below the requested count still fail. */
+    suspend fun historyWindow(input: JSONObject): JSONObject =
+        pages("/krstock/quote/v1/period", input, historyWindowRows = input.getInt("array_cnt")).single()
+}
+
+internal object NhHistoryWindow {
+    fun complete(path: String, requested: Int?, received: Int): Boolean =
+        path == "/krstock/quote/v1/period" && requested != null && requested in 1..250 && received >= requested
+}
+
+/** Only explicitly documented live-only quote routes use live during mock trading. */
+internal object NhEndpoints {
+    private val liveQuotes = setOf("/krstock/quote/v1/currentPrice", "/krstock/quote/v1/period")
+    fun base(environment: Environment, path: String): String =
+        if (environment == Environment.LIVE || path in liveQuotes) "https://api.nhplug.com:8443"
+        else "https://moapi.nhplug.com:8443"
+}
+
+/** Official authentication wire format. Never log this request: its URL contains credentials. */
+internal object NhAuthentication {
+    fun request(key: String, secret: String): Request {
+        val url = "https://api.nhplug.com:8443/oauth2/token".toHttpUrl().newBuilder()
+            .addQueryParameter("appkey", key)
+            .addQueryParameter("appsecretkey", secret)
+            .addQueryParameter("grant_type", "client_credentials")
+            .addQueryParameter("scope", "oob")
+            .build()
+        // String.toRequestBody silently adds charset=utf-8; NH rejects that token request
+        // with HTTP 403. Bytes preserve the documented exact form content type.
+        return Request.Builder().url(url)
+            .post(ByteArray(0).toRequestBody("application/x-www-form-urlencoded".toMediaType()))
+            .build()
+    }
 }
 
 /** HTTP 200 내부 업무 오류를 걸러내는 보수적 검사. 코드/자유문구의 완전한 명세를 대체하지 않으므로 계좌 통합 검증이 필요하다. */
