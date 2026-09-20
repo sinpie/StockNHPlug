@@ -199,3 +199,7 @@ API/전략 교체 구현 커밋 `7571725f172df4d8725d719d1a2ce3a49b5d5c6b`의 [G
 
 - 초기 JVM 124개/빌드 통과 후 ZIP 스트림 블록 쓰기 회귀 테스트 추가, JVM 125개 및 `testDebugUnitTest lintDebug assembleDebug bundleRelease assembleDebugAndroidTest` 성공.
 - Android 첫 실행은 XML 기준 31개 중 29개 통과, 1개 실패, 1개 opt-in CredentialProbe 제외. 실패: 기본 AndroidX CreateDocument가 CATEGORY_OPENABLE을 제공한다는 가정이 맞지 않아 계약 테스트 NPE. 실제 사용자 주문/키/파일은 사용하지 않았다. 테스트 조건을 제거하지 않고 `CreateHistoryDocument` 계약을 추가해 CATEGORY_OPENABLE을 명시했다. 수정 후 최종 빌드·기기 재검증 결과를 아래에 기록한다.
+
+## 요청 26 GitHub CI 증거
+
+구현 커밋 `8e619c8ad4f87aa0c8392c82f5c9b3ea80a83707`을 main에 push했고 [Android verification 35511701687](https://github.com/sinpie/StockNHPlug/actions/runs/35511701687)이 success로 완료됐다. CI의 JVM/린트/Debug APK/Release AAB 및 출처·계층 검사가 통과했다. Android 기기 결과는 위 로컬 에뮬레이터 검증이며 CI 기기 테스트로 표시하지 않는다. 이 후속 커밋은 문서 증거만 기록한다.
