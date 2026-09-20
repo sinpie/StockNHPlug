@@ -2,6 +2,8 @@
 
 ## 2026-09-20 · 사용자 제공 키의 Android 통합 시험
 
+구현 커밋 `e6a5ec5`의 [GitHub Actions 35499203697](https://github.com/sinpie/StockNHPlug/actions/runs/35499203697) 성공: Ubuntu/JDK 17의 JVM·린트·Debug APK·Release AAB·출처·계층 검사 통과. CI에는 실제 키를 전달하지 않았습니다. 기존 Actions Node 20/setup-java v4 폐기 예정 경고는 남아 있습니다.
+
 실제 키를 사용하라는 명시적 요청에 따라 API 30 disposable Debug 설치에서 앱의 SecureVault/NhTransport/NhBroker/NhSocket/NhPriceHistoryProvider/DartClient를 호출했습니다. 생산 UI 전체 조작 시험 또는 주문 시험이 아닙니다. 원본 설정은 읽기만 했고 복호화 값/토큰/계좌/시세 응답을 파일이나 출력에 남기지 않았습니다. 호스트에서 메모리 복호화 → 기기 일회성 공개키로 암호문 전달 → 기기 Keystore 암호화 저장 → 읽기 전용 시험 → 시험 저장소/키 정리 → 새로 설치한 테스트 APK 제거를 수행했습니다. 서버 토큰 폐기는 수행하지 않았습니다.
 
 | 최종 단계 | 실제 결과 |
