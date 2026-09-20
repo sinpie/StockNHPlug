@@ -102,3 +102,7 @@ UI 지표 확장은 `AccountAnalytics`와 읽기 전용 화면 컴포넌트에�
 UI 편집/조회는 `accountWorkspace(account)`로 생성한 계좌 고정 명령을 사용한다. 화면 선택을 전역 가변 상태로 다시 읽어 목적 계좌를 바꾸지 않는다. 공유 키·계좌 목록·전체 정지 명령은 관리자에 남긴다.
 
 `TradingWorkspace`는 UI/서비스 명령, `AccountRuntime`은 계좌 고정 세션과 부작용 없는 validateStart, `AccountRuntimeFactory`는 composition root의 생성 포트다. 신규 브로커도 각 계좌 별도 runtime/storage/gate를 구성해야 한다. 인증키 단위 rate-limit은 공유하되 계좌 잔고/전략/연구 상태는 공유하지 않는다. `AccountHistoryStore`의 record는 날짜별 누적 체결 전체 교체, mergePnl은 날짜별 원천값 병합이다. null을 0으로 대체하거나 중복 체결을 더하지 않는다. 세부 불변식은 [ACCOUNT_HISTORY.md](ACCOUNT_HISTORY.md).
+
+## 통계 형식 확장
+
+`HistoryExportFormat`/`HistoryExport`가 파일 형식 경계다. 새 형식도 선택 계좌·기간의 고정 스냅샷과 HistoryAnalytics의 미조회/누적 체결 의미를 유지해야 한다. UI나 formatter에서 SecureVault/Broker를 직접 호출하지 않는다. Android 저장기는 platform에 유지하며 단일 사용자 선택 URI만 사용한다. 새 formatter의 문자열 주입·누락·계좌 전환·취소/저장 실패 테스트를 추가한다. [현재 계약](EXPORT_AND_OPERATIONS.md).

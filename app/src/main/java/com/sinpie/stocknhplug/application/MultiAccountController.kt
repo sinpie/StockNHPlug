@@ -172,7 +172,13 @@ class MultiAccountController(
     }
 
     override fun startSession() {
-        check(!failed && !discovering && !discovery.state.value.busy)
+        // 서비스 진입점도 UI와 동일하게 공유 자격증명 저장소 오류를 거절해야 한다.
+        check(
+            !failed &&
+                !discovering &&
+                !discovery.state.value.busy &&
+                !discovery.state.value.storageError
+        )
         val targets = profiles.filter { it.enabled }.map { runtimes.getValue(it.account) }
         check(targets.isNotEmpty()) { "자동운용 계좌를 켜세요." }
         val pending = targets.filter { !it.state.value.running }

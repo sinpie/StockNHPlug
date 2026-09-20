@@ -8,9 +8,12 @@ import android.view.*
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
 import androidx.compose.runtime.*
 import androidx.core.content.ContextCompat
 import com.sinpie.stocknhplug.application.*
+import com.sinpie.stocknhplug.platform.CreateHistoryDocument
+import com.sinpie.stocknhplug.platform.HistoryExportModel
 import com.sinpie.stocknhplug.platform.TradingService
 import com.sinpie.stocknhplug.ui.*
 
@@ -20,6 +23,23 @@ import com.sinpie.stocknhplug.ui.*
  */
 class MainActivity : ComponentActivity() {
     private var unlocked by mutableStateOf(false)
+    private val exporter: HistoryExportModel by viewModels()
+    // 인증 UI가 사라져도 launcher 등록 순서는 유지되어 시스템 파일 선택 결과를 잃지 않는다.
+    private val csvDocument =
+        registerForActivityResult(CreateHistoryDocument("text/csv")) { exporter.save(it) }
+    private val zipDocument =
+        registerForActivityResult(CreateHistoryDocument("application/zip")) { exporter.save(it) }
+
+    private fun exportHistory(request: HistoryExport) {
+        if (!unlocked || !exporter.prepare(request)) return
+        try {
+            if (request.format == HistoryExportFormat.CSV) csvDocument.launch(request.filename)
+            else zipDocument.launch(request.filename)
+        } catch (_: Exception) {
+            exporter.launchFailed()
+        }
+    }
+
     private val authentication =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             unlocked = result.resultCode == RESULT_OK
@@ -37,6 +57,7 @@ class MainActivity : ComponentActivity() {
         val controller = AppContainer.get(this).controller
         setContent {
             StockTheme {
+                val exportStatus by exporter.state.collectAsState()
                 if (!unlocked) LockScreen(::unlock)
                 else
                     StockApp(
@@ -56,6 +77,9 @@ class MainActivity : ComponentActivity() {
                             controller.stop()
                             stopService(Intent(this, TradingService::class.java))
                         },
+                        export = ::exportHistory,
+                        exportBusy = exportStatus.busy,
+                        exportMessage = exportStatus.message,
                     )
             }
         }

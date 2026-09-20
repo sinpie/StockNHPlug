@@ -14,6 +14,23 @@ class MultiAccountTest {
     private val b = Account("2222", Environment.MOCK, "nhplug")
 
     @Test
+    fun serviceCannotStartWhenSharedCredentialStorageHasFailed() = runTest {
+        val root = Runtime()
+        val child = Runtime(a)
+        val manager =
+            MultiAccountController(
+                root,
+                Directory(listOf(AccountProfile(a, true))),
+                { child },
+                { StrategyBook.defaults() to Strategy() },
+                StandardTestDispatcher(testScheduler),
+            )
+        root.state.value = root.state.value.copy(storageError = true)
+        assertTrue(runCatching { manager.startSession() }.isFailure)
+        assertEquals(0, child.starts)
+    }
+
+    @Test
     fun commandsCapturedByOldScreenStayBoundToTheirOriginalAccount() = runTest {
         val directory = Directory(listOf(AccountProfile(a), AccountProfile(b)))
         val runtimes = mutableMapOf<Account, Runtime>()

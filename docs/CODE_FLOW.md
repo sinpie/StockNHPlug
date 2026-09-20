@@ -153,3 +153,7 @@ submit → validateDispatch → expiresAt 포함 OrderIntent 생성 → reserve 
 ## 요청 25 진입 흐름
 
 설정 → discoverAccounts → 공식 계좌 목록 → 디렉터리 저장 → 계좌별 factory 생성. 선택 → 해당 runtime의 StateFlow만 UI에 표시. 연결 → boundAccount가 공식 목록에 있는지 확인 → 잔고/체결 → AccountHistoryStore.record → 최근 손익 mergePnl → 구독 준비. 서비스 시작 → enable 계좌 전체 validateStart → 각 runtime.startSession. 서비스 정지 → 모든 runtime.stop. 통계는 선택 계좌 history → HistoryAnalytics → 일/월/연 화면이며 주문 엔진으로 돌아가지 않는다. 상세는 [계좌별 흐름도](ACCOUNT_HISTORY.md).
+
+## 요청 26: 통계 파일과 운용 진단 흐름
+
+`HistoryScreen → HistoryExport.capture → StockApp export callback → MainActivity.exportHistory → HistoryExportModel.prepare → CreateDocument → HistoryExportModel.save → IO/HistoryExport.write → close → 상태 게시`. 계좌 선택이 변경되어도 pending 스냅샷은 바뀌지 않는다. Activity onStop 잠금 정책은 그대로 유지한다. `Dashboard → OperationPanel → OperationReview.inspect`는 읽기 전용이고 주문을 시작하지 않는다. 서비스의 `MultiAccountController.startSession`도 공유 저장소 오류를 직접 검사한다. 자세한 실패 흐름은 [EXPORT_AND_OPERATIONS.md](EXPORT_AND_OPERATIONS.md).

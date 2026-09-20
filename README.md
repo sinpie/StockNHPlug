@@ -39,6 +39,8 @@ flowchart TB
 
 ## 문서
 
+- [손익 CSV/ZIP 다운로드·운용 점검](docs/EXPORT_AND_OPERATIONS.md) — 자산 → 통계에서 저장합니다. 선택 계좌/연도 범위만 포함하며 외부 파일은 암호화되지 않습니다. 홈에서 미확인 주문·자료 누락·일 매수 예약 한도를 점검합니다.
+
 - [사용자 요청 원문 누적 기록](docs/USER_REQUESTS.md) — 새 요청은 실행 전에 원문으로 추가합니다.
 - [진행 상태·압축 후 재개 지점](docs/WORK_STATUS.md)
 - [테스트 APK 설치·키 설정·검증 범위](docs/TESTING.md)
@@ -74,3 +76,5 @@ Android 11 에뮬레이터의 UI 테스트 호스트에서 캡처한 연결 전 
 사용자 저장소 기준으로 그룹별 반전 타겟, 10% 경계 WS/적응형 REST 전환, 트리거 후 파킹 자금 조정을 구현했습니다. [클래스·수식·차이와 한계](docs/PRICE_TRACKING.md). NH 실제 통합 검증 전 자동주문 시작 잠금은 유지됩니다.
 
 사용 화면은 홈·전략·시세·자산·내역으로 구성합니다. 최우선 호가·스프레드, 보유 비중·수익률, 일별 종가 차트, 주문 필터를 제공합니다. [화면 체계와 사용성](docs/UX.md), [시세/주문 검증 결과](docs/VERIFICATION.md)를 확인하세요.
+
+[손익 다운로드 화면](docs/images/history-export.png) · [운용 점검 화면](docs/images/operation-review.png) — 합성 테스트 자료.

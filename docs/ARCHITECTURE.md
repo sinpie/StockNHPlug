@@ -149,3 +149,9 @@ HTTP 성공과 업무 성공을 구분합니다. 오류 문구/심각도와 응�
 `AppContainer.controller`는 이제 `TradingWorkspace` 포트의 `MultiAccountController`다. root `TradingController(discoveryOnly=true)`는 계좌 목록/공유 키만 처리한다. `AccountRuntimeFactory`는 계좌별 `TradingController(boundAccount=...)`와 전용 vault/게이트를 생성한다. MainActivity/TradingService는 포트를 공유하고 서비스는 fleetRunning을 관찰한다. `AccountRun`은 표시용 enable/연결/실행/처리 상태다. 계좌 선택은 기존 런타임을 재연결하지 않는다.
 
 `AccountDirectory`/`EncryptedAccountDirectory`는 활성 대상 목록, `AccountHistoryStore`/`EncryptedAccountHistory`는 `AccountDay` 날짜별 관측 기록, `HistoryAnalytics`는 UI용 순수 집계를 소유한다. `AccountMigration`은 구 공용 저장소에서 식별 가능한 기록만 계좌별 복사한다. `SecureVault(context, account)`는 namespace를 AAD와 디렉터리에 적용한다. `EncryptedAppStorage`도 주문·스냅샷의 계좌 일치를 검사한다. 구체적인 함수 흐름·계산·이전 규칙은 [ACCOUNT_HISTORY.md](ACCOUNT_HISTORY.md).
+
+## 요청 26: 내보내기와 운용 점검
+
+`CreateHistoryDocument`는 platform의 ActivityResult 계약이다. MIME/파일명을 유지하고 CATEGORY_OPENABLE을 추가하여 스트림 파일 생성을 요청한다. MainActivity의 CSV/ZIP launcher 모두 이 계약을 사용한다.
+
+`HistoryExport`는 application의 순수 스냅샷/CSV·ZIP 직렬화 클래스다. `HistoryAnalytics`로 집계하며 Android URI나 실행 API를 참조하지 않는다. `HistoryExportModel`은 platform의 ViewModel로 파일 선택 중 메모리 요청과 IO 저장 상태를 소유한다. MainActivity가 CreateDocument 결과를 전달하고 StockApp/AssetsWorkspace/HistoryScreen은 내보내기 콜백만 전달한다. `OperationReview`는 계좌 필터링·당일 원장 예약액·상태 점검을 계산하며 `OperationPanel`은 이를 표시한다. 주문 정책의 소유권은 변경하지 않는다. 클래스별 흐름/파일 명세는 [EXPORT_AND_OPERATIONS.md](EXPORT_AND_OPERATIONS.md).

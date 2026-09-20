@@ -64,3 +64,7 @@ sequenceDiagram
 
 - [Kotlin coroutine 취소](https://kotlinlang.org/docs/cancellation-and-timeouts.html): 취소는 협력적이므로 완료 후 검사와 콜백 세대 검사를 함께 적용한다.
 - [Compose 기본 접근성](https://developer.android.com/develop/ui/compose/accessibility/api-defaults): Material 버튼/탭의 기본 semantics와 터치 영역을 사용하며 차트에 대체 설명을 추가한다.
+
+## 요청 26: 파일 선택과 계좌 변경
+
+선택 순간 HistoryExport.capture가 복사한 자료만 export ViewModel에 전달한다. 선택기를 열어 MainActivity.onStop으로 잠겨도 ActivityResult 등록은 유지된다. 회전은 ViewModel을 유지하고, 프로세스 사망은 요청을 만료시킨다. 저장 IO는 viewModelScope에서 수행하며 행/항목별 취소 검사, close 성공 후 완료, 실패 시 일반화된 메시지를 적용한다. 전체 이력을 Bundle/임시 평문 파일로 복원하지 않는다. busy는 선택기 실행 전 동기 설정한다. 앱 저장과 매매 작업의 잡/스코프를 공유하지 않는다. 외부 제공자가 블로킹 I/O에서 응답하지 않으면 시간/원자성을 보장할 수 없으며 불완전 문서가 남을 수 있다. [상세](EXPORT_AND_OPERATIONS.md).

@@ -16,7 +16,13 @@ import java.math.BigDecimal
 
 /** 손익/현금/거래를 같은 날짜 축에 표시하되 계산 의미는 분리한다. 원천 자료 없는 날은 합성하지 않는다. */
 @Composable
-internal fun HistoryScreen(s: AppState, refresh: () -> Unit, pnl: () -> Unit) {
+internal fun HistoryScreen(
+    s: AppState,
+    refresh: () -> Unit,
+    pnl: () -> Unit,
+    export: ((HistoryExport) -> Unit)? = null,
+    exportBusy: Boolean = false,
+) {
     var period by rememberSaveable { mutableIntStateOf(0) }
     var year by rememberSaveable { mutableStateOf("전체") }
     var expanded by rememberSaveable { mutableStateOf<String?>(null) }
@@ -42,6 +48,41 @@ internal fun HistoryScreen(s: AppState, refresh: () -> Unit, pnl: () -> Unit) {
     val stats =
         remember(rows, period) { HistoryAnalytics.summarize(rows, HistoryPeriod.values()[period]) }
     val known = remember(rows) { rows.mapNotNull { it.pnl } }
+    if (export != null)
+        Panel("다운로드") {
+            Text("선택 계좌 · $year · ${rows.size}일 기록", fontSize = 12.sp)
+            Text("CSV는 현재 기간 통계, ZIP은 일·월·연 통계와 거래·현금을 함께 저장합니다.", fontSize = 12.sp, color = Muted)
+            Text(
+                "내보낸 파일은 암호화되지 않습니다. 저장 위치에 따라 클라우드에 올라갈 수 있으며 앱 삭제 후에도 남습니다. 키와 전체 계좌번호는 제외합니다.",
+                fontSize = 11.sp,
+                color = Muted,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                HistoryExportFormat.values().forEach { format ->
+                    OutlinedButton(
+                        {
+                            s.selected?.let { account ->
+                                export(
+                                    HistoryExport.capture(
+                                        account,
+                                        rows,
+                                        HistoryPeriod.values()[period],
+                                        format,
+                                    )
+                                )
+                            }
+                        },
+                        enabled =
+                            rows.isNotEmpty() &&
+                                s.selected != null &&
+                                !s.storageError &&
+                                !exportBusy,
+                    ) {
+                        Text(if (format == HistoryExportFormat.CSV) "통계 CSV" else "전체 ZIP")
+                    }
+                }
+            }
+        }
     Panel("누적 손익") {
         val total =
             known

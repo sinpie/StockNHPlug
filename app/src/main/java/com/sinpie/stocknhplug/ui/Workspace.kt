@@ -226,7 +226,13 @@ fun PriceTrackingScreen(s: AppState, refresh: (String) -> Unit) {
 }
 
 @Composable
-fun AssetsWorkspace(s: AppState, refresh: () -> Unit, pnl: () -> Unit) {
+fun AssetsWorkspace(
+    s: AppState,
+    refresh: () -> Unit,
+    pnl: () -> Unit,
+    export: ((com.sinpie.stocknhplug.application.HistoryExport) -> Unit)? = null,
+    exportBusy: Boolean = false,
+) {
     var section by rememberSaveable { mutableIntStateOf(0) }
     Heading("자산", "${s.selected?.masked ?: "계좌 연결 전"} · 보유 현황과 계좌 손익")
     SectionTabs(listOf("잔고", "손익", "이력", "통계"), section) { section = it }
@@ -234,7 +240,7 @@ fun AssetsWorkspace(s: AppState, refresh: () -> Unit, pnl: () -> Unit) {
         0 -> HoldingsScreen(s, refresh)
         1 -> HistoryScreen(s, pnl, 2)
         2 -> HistoryScreen(s, pnl, 3)
-        3 -> HistoryScreen(s, refresh, pnl)
+        3 -> HistoryScreen(s, refresh, pnl, export, exportBusy)
     }
 }
 

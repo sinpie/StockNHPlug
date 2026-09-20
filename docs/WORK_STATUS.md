@@ -4,6 +4,8 @@
 
 ## 이번 요청 반영 상태
 
+- 요청 26 구현·로컬 검증 완료: 선택 계좌/기간 CSV·ZIP, SAF OPENABLE 계약, 고정 스냅샷/IO 저장 상태, 홈 운용 점검/일 매수 예약액, 공유 저장 오류 서비스 시작 차단. JVM 125개 및 Android 30개 통과(opt-in 1개 제외), 기본/130% UI 각각 2개 통과, 실제 런처 cold start 확인. 초기 Android 계약 실패 수정과 최종 빌드·lint·감사·캡처 결과를 VERIFICATION.md에 기록. EXPORT_AND_OPERATIONS.md와 관련 문서 갱신. 실제 주문/키/외부 문서 제공자의 전체 저장 경로는 미검증. Git commit/push 및 CI 확인을 마쳐야 저장소 반영 완료다.
+
 - 요청 25 구현·검증 완료: 계좌별 runtime/vault/전략/이력 격리, 여러 enable 계좌 동시 시작, 일별 현금·거래·보고 손익 보존, 일/월/연 통계. 최종 JVM 113개, Android 24개 통과(opt-in 1개 제외), 기본/130% 통계 UI 각각 2개 통과. 계좌 고정 명령/암호문 교환 거절/기존 미확인 원장/누적 체결 교체 검증 완료. Debug APK/Release AAB/린트/계층/출처/문서 검사 성공. ACCOUNT_HISTORY.md와 구조/보안/개인정보/실제 검증 문서 및 캡처 갱신. 구현 `61860cd` main push 및 [GitHub CI 35509909704](https://github.com/sinpie/StockNHPlug/actions/runs/35509909704) success 확인. 실제 주문 잠금과 미완료 출시 게이트 유지.
 
 - 요청 24 구현·검증 완료: 메뉴/탭/설정 개편, 전문 조회 지표, 타이밍·취소·세대 검사, 편집 저장 확인. ASYNC_REVIEW.md에 계산·비동기 계약 기록. JVM 105개, Android 19개 통과(opt-in 1개 제외), 기본/130% UI 각각 7개 통과. 실패 원인·수정·화면 육안 확인은 VERIFICATION.md 기록. Debug APK/Release AAB·린트·계층/출처/문서 검사 성공. 구현 `9ee728a` main push 및 [GitHub CI 35508100911](https://github.com/sinpie/StockNHPlug/actions/runs/35508100911) success 확인. 원문 기록 완료. 앱 전체 출시 게이트는 계속 유지한다.

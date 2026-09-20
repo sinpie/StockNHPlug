@@ -89,7 +89,14 @@ fun LockScreen(unlock: () -> Unit) {
 
 /** 인증 후 UI 진입점. StateFlow를 구독하고 사용자 이벤트만 컨트롤러/서비스에 위임한다. */
 @Composable
-fun StockApp(controller: TradingWorkspace, start: () -> Unit, stop: () -> Unit) {
+fun StockApp(
+    controller: TradingWorkspace,
+    start: () -> Unit,
+    stop: () -> Unit,
+    export: ((HistoryExport) -> Unit)? = null,
+    exportBusy: Boolean = false,
+    exportMessage: String = "",
+) {
     val state by controller.state.collectAsState()
     val accountCommands = controller.accountWorkspace(state.selected)
     var tab by rememberSaveable { mutableIntStateOf(0) }
@@ -141,6 +148,7 @@ fun StockApp(controller: TradingWorkspace, start: () -> Unit, stop: () -> Unit) 
             }
             if (state.accountRuns.isNotEmpty()) AccountSelector(state, controller::select)
             StatusBanner(state.message, state.messageError || state.storageError)
+            if (exportMessage.isNotEmpty()) StatusBanner(exportMessage)
             pageState.SaveableStateProvider("${state.accounts.indexOf(state.selected)}:$tab") {
                 val contentScroll = rememberScrollState()
                 val uiScope = rememberCoroutineScope()
@@ -181,6 +189,8 @@ fun StockApp(controller: TradingWorkspace, start: () -> Unit, stop: () -> Unit) 
                                 state,
                                 accountCommands::refresh,
                                 accountCommands::refreshPnl,
+                                export,
+                                exportBusy,
                             )
                         4 -> ActivityWorkspace(state)
                     }
@@ -376,29 +386,7 @@ private fun Dashboard(
             Text("잔고 갱신")
         }
     }
-    Panel("운용 준비") {
-        CheckLine("계좌 연결", s.connected, "NHPlug 모의투자")
-        CheckLine("그룹 체결 대사", s.groupExecutionReady, "주문번호 연결 검증 전 자동주문 잠금")
-        CheckLine("실시간 가격", s.quotes.values.any { it.fresh(now) }, "오래된 시세는 주문에 사용하지 않음")
-        CheckLine(
-            "매수 데이터 검증",
-            s.research.isNotEmpty() &&
-                s.book
-                    .ledgerGroups()
-                    .flatMap { it.symbols }
-                    .map { it.symbol }
-                    .distinct()
-                    .let { symbols ->
-                        symbols.isNotEmpty() &&
-                            symbols.all { symbol ->
-                                s.research.any {
-                                    it.symbol == symbol && it.buyBlockers(now).isEmpty()
-                                }
-                            }
-                    },
-            "수정주가 · 재무 · 공시 · 뉴스",
-        )
-    }
+    OperationPanel(s, now)
     Panel("분석 요약") {
         if (s.candidates.isEmpty()) Empty(Icons.Outlined.Analytics, "시세의 분석 탭에서 종목을 분석하세요.")
         else

@@ -188,3 +188,14 @@ API/전략 교체 구현 커밋 `7571725f172df4d8725d719d1a2ce3a49b5d5c6b`의 [G
 주문 경로는 **가짜 Broker 포트**로 검사했고 dispatch 직전 SUBMITTING 저널 존재 및 접수 후 재전송 차단을 확인했다. 실제 NH 체결·그룹 대사, 실기기 장시간 백그라운드/Doze, Play 공개 사용허가 및 뉴스/수정주가 출시 게이트는 여전히 미완료다. 이번 결과를 실매매 또는 NH 주문 통합 검증 통과로 해석하지 않는다.
 
 원격 재검증: 구현 커밋 `cef1cf2761151cd6d83e2b0350720a2646ee8c26`의 [GitHub CI 35506158166](https://github.com/sinpie/StockNHPlug/actions/runs/35506158166) **success** 확인. Ubuntu에서 단위 테스트·Lint·Debug APK·Release AAB·소스 감사·계층 검사를 실행했다. Android 기기 검증 결과는 위 로컬 API 30 시험이며 CI가 실행한 것으로 표시하지 않는다.
+# 요청 26 검증 이력 — 2026-09-20
+
+- **최종 통과**: JVM 125개(실패/오류 0), Android XML 31개 중 30개 통과·실제 키 opt-in 1개 제외(실패/오류 0). `testDebugUnitTest lintDebug assembleDebug bundleRelease assembleDebugAndroidTest` 최종 성공(2m 47s), `connectedDebugAndroidTest` 수정 후 성공(2m 14s).
+- 신규 검증: 내보내기 JVM 8개, 운용 점검 3개, 공유 저장 오류 서비스 시작 차단 1개; Android 내보내기 계약/취소/IO/close 실패 4개와 UI 2개. 계좌·기간 고정, 음수/빈칸, 수식 보호, 누적 체결, 예약액, 오류·취소를 검증했다.
+- 기본/130% 글꼴 `ExportUiTest` 각각 2개 통과. 다운로드/운용 점검 캡처 4개를 육안 확인하여 버튼·본문 겹침과 가로 잘림 없음, 세로 스크롤 조작 확인. 합성 자료이며 실제 계좌 기록이 아니다.
+- MainActivity 실제 런처 cold start Status ok, 프로세스 유지 확인. 기기 인증을 우회하거나 실제 계좌/API를 연결하지 않았다. `emulator-5580` 기존 Preview 패키지 보존, 새 Debug/test만 설치·제거, 글꼴/실행 전 root 상태 복원 확인.
+- lint 오류 0, 의존성/AGP 버전 경고 13개. Gradle 9 미호환 deprecated 기능 경고 유지. Debug APK와 최적화 Release AAB 생성. 실제 Play 서명/게시, 실제 주문, 실제 문서 선택기의 저장 클릭부터 클라우드 제공자 쓰기까지의 전 과정, 프로세스 사망/회전 end-to-end 검증은 수행하지 않았다. 메모리 출력 주입 테스트와 URI Intent 계약을 그 검증으로 대체했다고 주장하지 않는다.
+- 계층·출처 감사, Markdown 링크 및 diff 공백 검사 통과. API/시장 데이터 제공자는 변경하지 않았다. GitHub CI 결과는 후속 증거에 기록한다.
+
+- 초기 JVM 124개/빌드 통과 후 ZIP 스트림 블록 쓰기 회귀 테스트 추가, JVM 125개 및 `testDebugUnitTest lintDebug assembleDebug bundleRelease assembleDebugAndroidTest` 성공.
+- Android 첫 실행은 XML 기준 31개 중 29개 통과, 1개 실패, 1개 opt-in CredentialProbe 제외. 실패: 기본 AndroidX CreateDocument가 CATEGORY_OPENABLE을 제공한다는 가정이 맞지 않아 계약 테스트 NPE. 실제 사용자 주문/키/파일은 사용하지 않았다. 테스트 조건을 제거하지 않고 `CreateHistoryDocument` 계약을 추가해 CATEGORY_OPENABLE을 명시했다. 수정 후 최종 빌드·기기 재검증 결과를 아래에 기록한다.
