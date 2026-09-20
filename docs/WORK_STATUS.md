@@ -4,7 +4,7 @@
 
 ## 이번 요청 반영 상태
 
-- 요청 27 구현·로컬 검증 완료: 원문 기록 후 독립 조합 테스트 1,000개(C0001~C1000) 추가. ROUTE/ORDER/LEDGER/EXPORT 각 200개, SCHEDULE/ALGORITHM 각 100개. 결정적 TSV·전체 Markdown 목록·설계·생성 일치 검사·XML 실행 ID 검사와 CI 연결 완료. 새 1,000개와 기존 125개를 합친 JVM 1,125개 통과, 새 ID 1,000개가 각각 1회 실행되고 실패/오류/skip 0임을 검사. lint/Debug APK/Release AAB 및 계층/출처/문서 검사 통과. 프로덕션 코드·실매매 잠금 변경 없음. 기기/API/실제 키 테스트는 이번 요청에서 실행하지 않음. Git push 및 CI 증거 기록 대기.
+- 요청 27 구현·로컬 검증 완료: 원문 기록 후 독립 조합 테스트 1,000개(C0001~C1000) 추가. ROUTE/ORDER/LEDGER/EXPORT 각 200개, SCHEDULE/ALGORITHM 각 100개. 결정적 TSV·전체 Markdown 목록·설계·생성 일치 검사·XML 실행 ID 검사와 CI 연결 완료. 새 1,000개와 기존 125개를 합친 JVM 1,125개 통과, 새 ID 1,000개가 각각 1회 실행되고 실패/오류/skip 0임을 검사. lint/Debug APK/Release AAB 및 계층/출처/문서 검사 통과. 프로덕션 코드·실매매 잠금 변경 없음. 기기/API/실제 키 테스트는 이번 요청에서 실행하지 않음. 구현 `ce261d8` main push 및 [GitHub CI 35512509056](https://github.com/sinpie/StockNHPlug/actions/runs/35512509056) success 확인. 요청 27 완료.
 
 - 요청 26 구현·로컬 검증 완료: 선택 계좌/기간 CSV·ZIP, SAF OPENABLE 계약, 고정 스냅샷/IO 저장 상태, 홈 운용 점검/일 매수 예약액, 공유 저장 오류 서비스 시작 차단. JVM 125개 및 Android 30개 통과(opt-in 1개 제외), 기본/130% UI 각각 2개 통과, 실제 런처 cold start 확인. 초기 Android 계약 실패 수정과 최종 빌드·lint·감사·캡처 결과를 VERIFICATION.md에 기록. EXPORT_AND_OPERATIONS.md와 관련 문서 갱신. 실제 주문/키/외부 문서 제공자의 전체 저장 경로는 미검증. 구현 `8e619c8` main push 및 [GitHub CI 35511701687](https://github.com/sinpie/StockNHPlug/actions/runs/35511701687) success 확인 완료. 요청 26 완료, 기존 실매매·제공자·출시 게이트는 유지한다.
 

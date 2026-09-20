@@ -155,3 +155,7 @@ HTTP 성공과 업무 성공을 구분합니다. 오류 문구/심각도와 응�
 `CreateHistoryDocument`는 platform의 ActivityResult 계약이다. MIME/파일명을 유지하고 CATEGORY_OPENABLE을 추가하여 스트림 파일 생성을 요청한다. MainActivity의 CSV/ZIP launcher 모두 이 계약을 사용한다.
 
 `HistoryExport`는 application의 순수 스냅샷/CSV·ZIP 직렬화 클래스다. `HistoryAnalytics`로 집계하며 Android URI나 실행 API를 참조하지 않는다. `HistoryExportModel`은 platform의 ViewModel로 파일 선택 중 메모리 요청과 IO 저장 상태를 소유한다. MainActivity가 CreateDocument 결과를 전달하고 StockApp/AssetsWorkspace/HistoryScreen은 내보내기 콜백만 전달한다. `OperationReview`는 계좌 필터링·당일 원장 예약액·상태 점검을 계산하며 `OperationPanel`은 이를 표시한다. 주문 정책의 소유권은 변경하지 않는다. 클래스별 흐름/파일 명세는 [EXPORT_AND_OPERATIONS.md](EXPORT_AND_OPERATIONS.md).
+
+## 테스트 전용 조합 계층 (요청 27)
+
+`CombinationCaseTest`는 test source set의 Parameterized 진입점이며 TSV 케이스를 ROUTE/ORDER/LEDGER/EXPORT/SCHEDULE/ALGORITHM 검증 함수로 전달한다. 내부 MemoryBroker/Journal은 메모리 전용이고 실제 API·키 저장소를 갖지 않는다. 생성기는 독립 기대값과 문서/리소스를 만들고 결과 검증기는 XML 실행 ID를 대조한다. 프로덕션 의존성/소유권은 변경하지 않았다. [클래스 흐름과 조합 명세](COMBINATION_TESTING.md).

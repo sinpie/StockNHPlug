@@ -212,3 +212,7 @@ API/전략 교체 구현 커밋 `7571725f172df4d8725d719d1a2ce3a49b5d5c6b`의 [G
 - lint 오류 0, 기존 의존성/AGP 버전 경고 13개 및 Gradle 9 관련 deprecated 경고 유지. Debug APK·Release AAB 빌드 성공, 일부 프로덕션 빌드 단계는 변경 없음으로 UP-TO-DATE. 계층/출처 감사·문서 링크·diff 공백 검사 통과.
 - 실제 버그로 실패한 조합은 없었으며 프로덕션 코드는 수정하지 않았다. 이번 새 1,000개는 JVM 합성 테스트다. 실제 주문·키·NH API·WebSocket 서버·기기 Keystore/SAF를 실행하지 않았고 이전 Android 결과를 이번 통과 수에 더하지 않았다. 기존 출시 게이트/실매매 잠금 유지.
 - 전체 [케이스 목록](COMBINATION_CASES.md)과 [설계·기대값·한계](COMBINATION_TESTING.md). CI 결과는 후속 증거에 기록한다.
+
+### 요청 27 GitHub CI 증거
+
+구현 `ce261d80642276d9e89784497f710f38f7684420`의 [Android verification 35512509056](https://github.com/sinpie/StockNHPlug/actions/runs/35512509056) success 확인. 생성 파일 동기화 검사, 전체 JVM/린트/Debug APK/Release AAB, 새 1,000개 ID 실행 XML 검사, 출처·계층 감사가 통과했다. 후속 커밋은 문서 증거만 기록한다.
