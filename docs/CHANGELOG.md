@@ -1,5 +1,7 @@
 # 변경 이력
 
+- 요청 24 구현 `9ee728a` main push 및 [원격 CI 35508100911](https://github.com/sinpie/StockNHPlug/actions/runs/35508100911) 성공 확인. 검증 증거·남은 경고·현재 재개 상태 기록.
+
 - 요청 24 최종 로컬 검증: JVM 105개, Android 19개(opt-in 1개 제외), 기본/130% UI 각 7개 통과. Debug APK/Release AAB 성공, 린트 오류 0/버전 경고 14. 버튼 라벨 및 확대 화면 스크롤 시험 보완, 캡처 갱신. 상세 실패 이력과 한계는 VERIFICATION.md에 기록.
 
 ## 2026-09-20 · 제공된 키로 Android 읽기 전용 통합 시험

@@ -4,7 +4,7 @@
 
 ## 이번 요청 반영 상태
 
-- 요청 24 구현·로컬 검증 완료: 메뉴/탭/설정 개편, 전문 조회 지표, 타이밍·취소·세대 검사, 편집 저장 확인. ASYNC_REVIEW.md에 계산·비동기 계약 기록. JVM 105개, Android 19개 통과(opt-in 1개 제외), 기본/130% UI 각각 7개 통과. 실패 원인·수정·화면 육안 확인은 VERIFICATION.md 기록. Debug APK/Release AAB·린트·계층/출처/문서 검사 성공. 커밋/push/CI 확인 진행 중. 원문 기록 완료.
+- 요청 24 구현·검증 완료: 메뉴/탭/설정 개편, 전문 조회 지표, 타이밍·취소·세대 검사, 편집 저장 확인. ASYNC_REVIEW.md에 계산·비동기 계약 기록. JVM 105개, Android 19개 통과(opt-in 1개 제외), 기본/130% UI 각각 7개 통과. 실패 원인·수정·화면 육안 확인은 VERIFICATION.md 기록. Debug APK/Release AAB·린트·계층/출처/문서 검사 성공. 구현 `9ee728a` main push 및 [GitHub CI 35508100911](https://github.com/sinpie/StockNHPlug/actions/runs/35508100911) success 확인. 원문 기록 완료. 앱 전체 출시 게이트는 계속 유지한다.
 
 - 요청 20: 거리 10% 이상 REST / 10% 미만 WebSocket, 멀수록 긴 REST 간격, WebSocket 기본 ON 및 OFF 시 최대 10초 조회 예약 구현. 빈 소켓 미연결 및 OFF REST 반전 테스트 통과.
 - 요청 21: 실제 트리거와 별개로 상위 전략 제시가가 당일 상하한가 밖이면 해당 타겟의 당일 추적·주문 중단. 같은 종목에 유효한 다른 타겟이 있으면 그 타겟은 계속 추적. 경계·다음 날 재확인 테스트 통과.

@@ -2,6 +2,8 @@
 
 ## 2026-09-20 · 요청 24 UX·비동기 인터페이스
 
+- 구현 `9ee728a`의 [GitHub Actions 35508100911](https://github.com/sinpie/StockNHPlug/actions/runs/35508100911) 성공: Ubuntu/JDK 17에서 JVM·린트·Debug APK·Release AAB·출처·계층 검사 및 산출물 업로드 통과. Node 20 actions의 Node 24 강제 전환, setup-java v4 폐기 예정, ubuntu-latest 전환 안내는 남아 있다. Android 기기 시험은 아래 로컬 결과이며 CI에서 실행한 것으로 표시하지 않는다.
+
 - `testDebugUnitTest lintDebug assembleDebug bundleRelease connectedDebugAndroidTest`: 성공. JVM 105개 실패/오류 0. Android 11/API 30 XML 20개 중 19개 통과, 실제 키 opt-in 진단 1개 의도적 제외. 새 키/주문/취소 API 호출 없음.
 - 린트 오류 0, 버전 관련 경고 14개. Debug APK와 Release AAB 빌드 성공. production AAB 빌드를 Play 발행/서명 검증 완료로 간주하지 않는다.
 - 추가 회귀: 연속 탭, 시작 전 취소, 취소를 무시하는 계좌/잔고 응답, 이전 WebSocket 콜백, clear 뒤 REST 응답, 부분 조회 실패의 이전 스냅샷 보존, 60초 timeout, 정상 빈 손익·키 교체 초기화. 평가액/수익률/비중/스프레드의 0분모·큰 값도 검사했다.
