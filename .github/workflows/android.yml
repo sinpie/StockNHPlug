@@ -17,7 +17,9 @@ jobs:
           log-accepted-android-sdk-licenses: false
       - run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
       - uses: gradle/actions/setup-gradle@v4
+      - run: python3 scripts/generate_combination_cases.py --check
       - run: chmod +x gradlew && ./gradlew testDebugUnitTest lintDebug assembleDebug bundleRelease
+      - run: python3 scripts/check_combination_results.py
       - run: python3 scripts/audit_sources.py
       - run: python3 scripts/check_architecture.py
       - uses: actions/upload-artifact@v4

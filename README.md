@@ -39,6 +39,8 @@ flowchart TB
 
 ## 문서
 
+- [조합 테스트 1,000개 설계](docs/COMBINATION_TESTING.md) · [전체 케이스 목록](docs/COMBINATION_CASES.md)
+
 - [손익 CSV/ZIP 다운로드·운용 점검](docs/EXPORT_AND_OPERATIONS.md) — 자산 → 통계에서 저장합니다. 선택 계좌/연도 범위만 포함하며 외부 파일은 암호화되지 않습니다. 홈에서 미확인 주문·자료 누락·일 매수 예약 한도를 점검합니다.
 
 - [사용자 요청 원문 누적 기록](docs/USER_REQUESTS.md) — 새 요청은 실행 전에 원문으로 추가합니다.

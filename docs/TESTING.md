@@ -74,3 +74,7 @@ Android 테스트는 실사용 설치에서 실행하지 않는다. 실제 실�
 `HistoryExportTest`: CSV 한글/BOM/음수/빈칸, ZIP 항목, 수식 주입 문자열·앞자리 0, 전체 계좌/주문번호 제외, 스냅샷 복사, 누적 체결·큰 금액, 출력 실패·취소·빈/중복 날짜. `OperationReviewTest`: 계좌/날짜/거절별 예약액, 미확인 주문, 60초 경계/미래 시각/누락/저장·대사 잠금. MultiAccountTest는 UI를 거치지 않는 공유 저장 오류 시작 차단도 검사한다.
 
 `HistoryExportAndroidTest`: 메모리 출력 스트림을 주입하여 Android IO dispatcher/close 성공·실패, 선택 취소/프로세스 사망에 해당하는 요청 없음, 중복 준비, content URI 제한 및 시스템 문서 생성 Intent 계약을 검사한다. 이 테스트는 실제 DocumentsUI 저장 클릭, 클라우드 제공자의 파일 저장, 프로세스 강제 종료/회전 전체 시나리오의 증거가 아니다. `ExportUiTest`는 선택 연도/기간 CSV 요청과 중복 비활성, 운용 점검 펼침을 합성 자료로 확인한다. 기본/130% 글꼴 캡처는 실제 계좌 자료가 아니다. 실행 결과는 VERIFICATION.md에 기록한다.
+# 조합 테스트 1,000개
+
+[설계·실행법](COMBINATION_TESTING.md) · [C0001~C1000 전체 입력·기대 결과](COMBINATION_CASES.md).
+`./gradlew testDebugUnitTest`에 자동 포함된다. 별도로 `python scripts/generate_combination_cases.py --check`와 `python scripts/check_combination_results.py`를 실행하여 문서/리소스 일치 및 모든 ID의 실제 실행을 확인한다. 이 1,000개는 JVM 합성 케이스이며 실제 기기·증권사 테스트가 아니다.

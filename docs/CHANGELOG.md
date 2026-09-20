@@ -133,3 +133,9 @@
 - 홈 운용 점검: 계좌별 미확인 주문/대사 잠금/신선도/연구 근거/오늘 기록/일 매수 예약 한도.
 - 서비스 시작 경계의 공유 저장소 오류 차단 보완. 실매매 잠금과 미완료 출시 게이트 유지.
 - 형식 선택 이유·클래스/함수 흐름·추가 기능 검토를 EXPORT_AND_OPERATIONS.md에 기록. 실제 검증 결과는 VERIFICATION.md.
+# 2026-09-20 — 요청 27: 조합 테스트 1,000개
+
+- ROUTE/ORDER/LEDGER/EXPORT 각 200개, SCHEDULE/ALGORITHM 각 100개의 독립 JUnit parameterized 테스트 추가. 기존 125개 유지.
+- 케이스 ID·입력·기대값 TSV와 전체 Markdown 목록, 생성 스크립트 및 실행 XML의 1,000개 ID 검증 추가.
+- CI에 생성 파일 일치 검사와 실제 실행 ID/실패·오류·skip 검사 연결. 실제 API·키·주문 사용 없음, 프로덕션 코드는 변경하지 않음.
+- 상세 차원·독립 기대값·한계: COMBINATION_TESTING.md. 실행 증거는 VERIFICATION.md.

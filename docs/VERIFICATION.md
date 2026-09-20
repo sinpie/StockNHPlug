@@ -203,3 +203,12 @@ API/전략 교체 구현 커밋 `7571725f172df4d8725d719d1a2ce3a49b5d5c6b`의 [G
 ## 요청 26 GitHub CI 증거
 
 구현 커밋 `8e619c8ad4f87aa0c8392c82f5c9b3ea80a83707`을 main에 push했고 [Android verification 35511701687](https://github.com/sinpie/StockNHPlug/actions/runs/35511701687)이 success로 완료됐다. CI의 JVM/린트/Debug APK/Release AAB 및 출처·계층 검사가 통과했다. Android 기기 결과는 위 로컬 에뮬레이터 검증이며 CI 기기 테스트로 표시하지 않는다. 이 후속 커밋은 문서 증거만 기록한다.
+
+## 요청 27 — 조합 테스트 1,000개 (2026-09-20)
+
+- `CombinationCaseTest` 단독 초기 실행: 1,000개 통과. 입력 중복 가능성을 검토해 ROUTE 0% 양방향 중복을 0.01% 양방향으로 바꾸고 범위 밖 제시가/추적가도 개별 조합으로 구분했다. WS 수신/구독 확인, 다른 계좌 원장 불변, CSV의 종목명 제외 및 ZIP 독립 CSV 파싱 검증을 보강했다.
+- 최종 `testDebugUnitTest lintDebug assembleDebug bundleRelease`: **BUILD SUCCESSFUL (59s)**. JUnit XML 기준 새 1,000개 + 기존 125개 = **1,125개**, 실패/오류 0.
+- `generate_combination_cases.py --check`: 1,000개 고유 조합과 리소스/문서 일치 통과. `check_combination_results.py`: C0001~C1000 각각 정확히 1회 실행, 누락·중복·실패·오류·skip 없음.
+- lint 오류 0, 기존 의존성/AGP 버전 경고 13개 및 Gradle 9 관련 deprecated 경고 유지. Debug APK·Release AAB 빌드 성공, 일부 프로덕션 빌드 단계는 변경 없음으로 UP-TO-DATE. 계층/출처 감사·문서 링크·diff 공백 검사 통과.
+- 실제 버그로 실패한 조합은 없었으며 프로덕션 코드는 수정하지 않았다. 이번 새 1,000개는 JVM 합성 테스트다. 실제 주문·키·NH API·WebSocket 서버·기기 Keystore/SAF를 실행하지 않았고 이전 Android 결과를 이번 통과 수에 더하지 않았다. 기존 출시 게이트/실매매 잠금 유지.
+- 전체 [케이스 목록](COMBINATION_CASES.md)과 [설계·기대값·한계](COMBINATION_TESTING.md). CI 결과는 후속 증거에 기록한다.
