@@ -87,6 +87,7 @@ data class Strategy(
     val maxSessionLoss: Long = 30_000,
     val minScore: Int = 70,
     val manageHoldings: Boolean = false,
+    val websocketEnabled: Boolean = true,
 ) {
     fun validate() {
         require(

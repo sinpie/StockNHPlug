@@ -86,6 +86,7 @@ class GroupCoordinatorTest {
         override val id = "test-broker"
         override val environment = Environment.MOCK
         var sent = 0
+        var beforePlace: (OrderIntent) -> Unit = {}
 
         override suspend fun accounts() = emptyList<Account>()
 
@@ -95,6 +96,7 @@ class GroupCoordinatorTest {
             100L
 
         override suspend fun place(account: Account, intent: OrderIntent): String {
+            beforePlace(intent)
             sent++
             return "test-$sent"
         }
@@ -109,6 +111,148 @@ class GroupCoordinatorTest {
             override suspend fun reconcile(account: Account, orders: List<OrderRecord>) =
                 emptyList<GroupFillReport>()
         }
+
+    @Test
+    fun pendingScheduleCarriesOriginalPriceOccurrenceAndLowIntoNextDay() = runBlocking {
+        val store = MemoryStore()
+        val broker = FakeBroker()
+        var clock = now
+        val engine = TradingEngine(broker, store) { clock }.also { it.start(portfolio) }
+        val gate = com.sinpie.stocknhplug.trading.NamuExecutionGate()
+        val coordinator =
+            GroupTradingCoordinator(store, source, GroupAlgorithmRegistry.defaults(), engine, gate)
+        suspend fun tick(price: Long): OrderRecord? {
+            val q =
+                quote.copy(
+                    price = price,
+                    ask = price,
+                    bid = price,
+                    receivedAt = clock,
+                    exchangeAt = clock,
+                )
+            gate.observe(
+                PriceSnapshot(
+                    q,
+                    MarketRules(
+                        clock.atZone(SEOUL).toLocalDate(),
+                        7000,
+                        13000,
+                        InstrumentKind.STOCK,
+                    ),
+                    PriceSource.REST,
+                ),
+                clock,
+            )
+            return coordinator.tick(
+                account,
+                portfolio.copy(at = clock),
+                mapOf(q.symbol to q),
+                listOf(evidence().copy(checkedAt = clock)),
+                Strategy(),
+                clock,
+            )
+        }
+        assertNull(tick(10000))
+        assertNull(tick(9000))
+        val original = gate.targets().single()
+        clock = now.plusSeconds(86400)
+        assertNull(tick(8500))
+        val carried = gate.targets().single()
+        assertEquals(original.key, carried.key)
+        assertEquals(original.strategyPrice, carried.strategyPrice)
+        assertEquals("schedule:2026-09-21", carried.occurrence)
+        assertEquals(8500L, carried.extreme)
+        assertFalse(carried.ready)
+        broker.beforePlace = { intent ->
+            assertEquals(
+                OrderStatus.SUBMITTING,
+                store.orders.single { it.intent.id == intent.id }.status,
+            )
+        }
+        clock = clock.plusSeconds(1)
+        val order = tick(9400)!!
+        assertEquals(original.occurrence, order.intent.occurrence)
+        assertEquals(1, broker.sent)
+        assertNull(tick(9400)) // Accepted is pending; no second dispatch or guessed fill.
+        assertEquals(8500L, gate.targets().single().extreme)
+    }
+
+    @Test
+    fun separateStrategyGroupsKeepDifferentTargetsForSameSymbolAfterDateChange() = runBlocking {
+        val store = MemoryStore()
+        store.book =
+            store.book.copy(
+                plans =
+                    store.book.plans.map { it.copy(schedule = PurchaseSchedule(enabled = false)) },
+                groups =
+                    listOf(
+                        store.book.groups.single(),
+                        store.book.groups.single().copy(id = "g2", strategyId = "rebalance"),
+                    ),
+            )
+        val algorithms =
+            listOf("averaging", "rebalance").map { strategy ->
+                object : GroupAlgorithm {
+                    override val id = strategy
+                    override val name = "test"
+
+                    override fun decide(context: GroupContext) =
+                        listOf(
+                            GroupDecision(
+                                "005930",
+                                Side.BUY,
+                                1,
+                                "test",
+                                "independent",
+                                if (strategy == "averaging") 10000 else 8000,
+                            )
+                        )
+                }
+            }
+        val broker = FakeBroker()
+        val engine = TradingEngine(broker, store) { now }.also { it.start(portfolio) }
+        val gate = com.sinpie.stocknhplug.trading.NamuExecutionGate()
+        val coordinator =
+            GroupTradingCoordinator(store, source, GroupAlgorithmRegistry(algorithms), engine, gate)
+        suspend fun tick(at: Instant, price: Long) {
+            val q =
+                quote.copy(
+                    price = price,
+                    bid = price,
+                    ask = price,
+                    receivedAt = at,
+                    exchangeAt = at,
+                )
+            gate.observe(
+                PriceSnapshot(
+                    q,
+                    MarketRules(at.atZone(SEOUL).toLocalDate(), 1000, 50000, InstrumentKind.STOCK),
+                    PriceSource.REST,
+                ),
+                at,
+            )
+            assertNull(
+                coordinator.tick(
+                    account,
+                    portfolio.copy(at = at),
+                    mapOf(q.symbol to q),
+                    listOf(evidence().copy(checkedAt = at)),
+                    Strategy(),
+                    at,
+                )
+            )
+        }
+        tick(now, 9000)
+        val keys = gate.targets().map { it.key }.toSet()
+        assertEquals(2, keys.size)
+        assertEquals(9000L, gate.targets().single { it.groupId == "g1" }.extreme)
+        assertNull(gate.targets().single { it.groupId == "g2" }.extreme)
+        tick(now.plusSeconds(86400), 8500)
+        assertEquals(keys, gate.targets().map { it.key }.toSet())
+        assertEquals(8500L, gate.targets().single { it.groupId == "g1" }.extreme)
+        assertNull(gate.targets().single { it.groupId == "g2" }.extreme)
+        assertEquals(0, broker.sent)
+    }
 
     private fun evidence(adjusted: Boolean = true): ResearchEvidence {
         val today = now.atZone(SEOUL).toLocalDate()

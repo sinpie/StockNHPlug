@@ -33,6 +33,8 @@ flowchart TB
 
 ## 문서
 
+- [사용자 요청 원문 누적 기록](docs/USER_REQUESTS.md) — 새 요청은 실행 전에 원문으로 추가합니다.
+- [진행 상태·압축 후 재개 지점](docs/WORK_STATUS.md)
 - [테스트 APK 설치·키 설정·검증 범위](docs/TESTING.md)
 
 - [물타기·리밸런싱·전략 그룹·정기매수](docs/GROUP_STRATEGIES.md)

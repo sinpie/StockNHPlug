@@ -188,6 +188,10 @@ fun PriceTrackingScreen(s: AppState, refresh: (String) -> Unit) {
                 )
                 Text("전략 제시가 ${won(target.strategyPrice)}", fontSize = 12.sp)
                 Text(
+                    "추적 최저 ${won(target.minimum)} · 추적 최고 ${won(target.maximum)}",
+                    fontSize = 12.sp,
+                )
+                Text(
                     "${if (target.side == Side.BUY) "추적 저점" else "추적 고점"} ${won(target.extreme)} · 실제 트리거 ${target.trigger?.let { String.format(Locale.KOREA, "%,.1f원", it) } ?: "대기"}",
                     fontSize = 12.sp,
                 )

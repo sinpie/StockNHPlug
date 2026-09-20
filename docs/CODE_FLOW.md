@@ -138,3 +138,10 @@ API와 전략의 구체적인 교체 계약 및 의존성 방향은 [EXTENDING.m
 StockApp → MarketWorkspace → PriceTrackingScreen 종목 조회 → TradingController.refreshPrice → HybridPriceMonitor.refresh → CurrentPriceProvider → PriceSnapshot.valid → onPrice → AppState. 자동 주문 시작과 독립적입니다. 주문은 기존 submit 경로에서 가능수량 조회 이후 및 reserve 이후 validateDispatch를 재수행합니다.
 
 submit → validateDispatch → expiresAt 포함 OrderIntent 생성 → reserve → validateDispatch/dispatchable → Broker.place → NH dispatchGuard의 dispatchable → HTTP 전송. Broker 호출 전 거절과 호출 이후 불명확 결과를 구분합니다. 연결/설정 변경 시 resetTrackingView가 가격·가상 타겟·전송 표시만 비우고 실제 저널은 유지합니다.
+# 2026-09-20 연결 복원과 일별 추적 흐름
+
+1. `TradingController.subscribeSelectedAccount` → `ExecutionGate.activate` → `TrackingStore.load`: 현재 증권사·계좌·환경 이력만 복원.
+2. `HybridPriceMonitor.step` → `setRequests`: 각 타겟의 상위 제시가와 실제 트리거를 구분. 같은 종목의 유효한 타겟 중 가장 가까운 거리로 전송을 선택.
+3. 당일 REST 메타데이터 확인 → `NamuExecutionGate.observe`: 상위 제시가 범위 검사 후 타겟별 최고/최저와 방향별 극값 갱신. 저장할 상태가 변경된 경우에만 `TrackingStore.save`.
+4. `GroupTradingCoordinator.tick` → 미완료 회차 재사용 → 최신 전략·연구 근거 → `evaluate` → 공통 위험 검사·전송 전 주문 저널. 이전 날짜의 만료 시간은 새 거래일에 재설정하되 추적 극값은 보존.
+5. 정지/연결 종료는 시세와 메모리만 비운다. 다음 연결에서 이력을 복원하지만 이전 ready 상태로 주문하지 않는다. 전체 데이터 삭제는 tracking 암호문까지 제거한다.

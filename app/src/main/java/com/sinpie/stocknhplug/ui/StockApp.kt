@@ -400,6 +400,7 @@ private fun StrategyScreen(s: AppState, save: (Strategy) -> Unit) {
                             maxPositions = count.toInt(),
                             maxSessionLoss = session.toLong(),
                             manageHoldings = manage,
+                            websocketEnabled = s.settings.websocketEnabled,
                         )
                     next.validate()
                     save(next)
@@ -718,6 +719,10 @@ private fun SettingsDialog(s: AppState, c: TradingController, close: () -> Unit)
                 Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                TrackingOptions(s.settings.websocketEnabled, !s.running && !s.busy) {
+                    c.saveSettings(s.settings.copy(websocketEnabled = it))
+                }
+                HorizontalDivider()
                 Text(
                     "키는 Android Keystore로 암호화해 기기 내부에만 저장합니다. 인증할 때만 NHPlug·OpenDART 공식 서버로 전송합니다.",
                     fontSize = 12.sp,

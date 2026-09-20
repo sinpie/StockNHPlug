@@ -105,6 +105,7 @@ class SecureVault(context: Context) {
                 "events",
                 "groupbook",
                 "groupfills",
+                "tracking",
             )
             .forEach(::delete)
         KeyStore.getInstance("AndroidKeyStore").apply {

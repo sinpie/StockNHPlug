@@ -205,7 +205,7 @@ class TradingController(
                 quotes = emptyMap(),
             )
         }
-        log("전략 설정 저장 완료 · 변경된 관심종목을 적용하려면 계좌를 다시 연결하세요.")
+        log("설정 저장 완료 · 관심종목과 시세 추적 설정을 적용하려면 계좌를 다시 연결하세요.")
     }
 
     /** 연결 버튼 진입점: 준비 상태 초기화 → 인증/계좌 목록 → 잔고·체결 → WebSocket 구독 순서다. 중간 실패는 connected=false를 유지한다. */
@@ -227,7 +227,16 @@ class TradingController(
         }
         val session =
             sessionFactory.create(
-                { quote -> scope.launch { monitor?.onWebsocket(quote) } },
+                { quote ->
+                    scope.launch {
+                        try {
+                            monitor?.onWebsocket(quote)
+                        } catch (_: TrackingStorageException) {
+                            stop("추적 이력 저장 실패 · 자동매매 정지")
+                            change { it.copy(storageError = true) }
+                        }
+                    }
+                },
                 { msg -> scope.launch { log(msg) } },
                 { scope.launch { log("시세 WebSocket 연결 끊김 · 검증된 REST 시세로 추적, 재연결 대기") } },
             )
@@ -245,6 +254,7 @@ class TradingController(
                     executionGate,
                     { q -> change { it.copy(quotes = it.quotes + (q.symbol to q)) } },
                     { log(it) },
+                    websocketEnabled = state.value.settings.websocketEnabled,
                 )
             }
         researchRepository = session.research
@@ -300,9 +310,9 @@ class TradingController(
         val symbols =
             (state.value.portfolio!!.holdings.map { it.symbol } + configuredSymbols()).distinct()
         check(symbols.size <= 100) { "현재 가격 추적은 고유 종목 100개까지 지원합니다." }
-        executionGate.clear()
+        executionGate.activate(state.value.selected!!, broker!!.environment)
         monitor?.clear()
-        socket!!.connect(emptyList())
+        // The monitor opens a socket only when an eligible near target exists and the option is on.
         monitor?.step(symbols.toSet())
     }
 
@@ -471,6 +481,9 @@ class TradingController(
                     stop("자동매매 세션 종료")
                 } catch (e: CancellationException) {
                     throw e
+                } catch (_: TrackingStorageException) {
+                    stop("추적 이력 저장 실패 · 자동매매 정지")
+                    change { it.copy(storageError = true) }
                 } catch (_: Exception) {
                     stop("안전 점검으로 자동매매 정지 · 잔고·시세·주문 내역을 확인하세요.")
                 }

@@ -38,13 +38,16 @@ object KrxTicks {
 }
 
 /**
- * 전략 제시가/추적 극값/실제 트리거를 분리한다. NamuMagic hybrid 기본 수식에 근거한 독립 Kotlin 구현. 세션 내 상태만 유지하며 정지/계좌 변경 시
- * 폐기한다. 실제 전송 의도는 별도 영속 저널이 소유한다.
+ * 전략 제시가/추적 극값/실제 트리거를 분리한다. 날짜 변경과 연결 종료는 미완료 매매의 이력을 지우지 않는다. 저장소 복원은 이력만 복원하며, 주문 가능 여부는 반드시 새
+ * 당일 시세로 다시 판단한다.
  */
-class NamuExecutionGate : ExecutionGate {
+class NamuExecutionGate(private val store: TrackingStore? = null) : ExecutionGate {
     private data class Entry(
-        val request: TargetRequest,
+        var request: TargetRequest,
         var extreme: Long? = null,
+        var minimum: Long? = null,
+        var maximum: Long? = null,
+        var active: Boolean = true,
         var trigger: Double? = null,
         var ready: Boolean = false,
         var message: String = "시세 대기",
@@ -52,6 +55,38 @@ class NamuExecutionGate : ExecutionGate {
 
     private val entries = linkedMapOf<String, Entry>()
     private val snapshots = mutableMapOf<String, PriceSnapshot>()
+    private var scope: Pair<Account, Environment>? = null
+    private var saved = emptyList<TrackingRecord>()
+
+    override fun activate(account: Account, environment: Environment) {
+        clear()
+        val records =
+            try {
+                store?.load(account, environment).orEmpty()
+            } catch (_: Exception) {
+                throw TrackingStorageException()
+            }
+        records.forEach { r ->
+            entries[r.request.key] = Entry(r.request, r.extreme, r.minimum, r.maximum, r.active)
+        }
+        scope = account to environment
+        saved = records
+    }
+
+    /** 극값/활성 상태가 달라질 때만 쓴다. 매 틱의 UI 메시지/ready/시세를 디스크에 쓰지 않는다. */
+    private fun persist() {
+        val records =
+            entries.values.map {
+                TrackingRecord(it.request, it.extreme, it.minimum, it.maximum, it.active)
+            }
+        if (records == saved) return
+        try {
+            scope?.let { (account, environment) -> store?.save(account, environment, records) }
+        } catch (_: Exception) {
+            throw TrackingStorageException()
+        }
+        saved = records
+    }
 
     override fun evaluate(request: TargetRequest, quote: Quote, now: Instant): Boolean {
         require(request.strategyPrice > 0 && request.symbol == quote.symbol)
@@ -66,13 +101,16 @@ class NamuExecutionGate : ExecutionGate {
             )
                 Entry(request).also { entries[request.key] = it }
             else old
+        entry.active = true
         val snapshot = snapshots[request.symbol]
         if (snapshot == null || snapshot.quote != quote) {
             entry.ready = false
             entry.message = "검증 시세 대기"
+            persist()
             return false
         }
         update(entry, snapshot, now)
+        persist()
         return entry.ready
     }
 
@@ -86,8 +124,9 @@ class NamuExecutionGate : ExecutionGate {
             return
         snapshots[snapshot.quote.symbol] = snapshot
         entries.values
-            .filter { it.request.symbol == snapshot.quote.symbol }
+            .filter { it.active && it.request.symbol == snapshot.quote.symbol }
             .forEach { update(it, snapshot, now) }
+        persist()
     }
 
     private fun update(entry: Entry, snapshot: PriceSnapshot, now: Instant) {
@@ -102,14 +141,32 @@ class NamuExecutionGate : ExecutionGate {
                 q.bid <= 0 ||
                 q.ask < q.bid ||
                 !r.contains(q.price, now) ||
-                !r.contains(request.strategyPrice, now) ||
                 r.kind == InstrumentKind.UNKNOWN
         ) {
             entry.trigger = null
             entry.message = "장 상태·시세·가격범위 검증 대기"
             return
         }
+        if (!r.contains(request.strategyPrice, now)) {
+            entry.trigger = null
+            entry.message = "전략 제시가가 당일 상하한가 밖 · 추적 중단"
+            return
+        }
+        // 전일의 강제 판단 기한을 다음 날 개장 즉시 적용하지 않는다. 극값은 그대로 보존한다.
+        val day = now.atZone(SEOUL).toLocalDate()
+        if (entry.request.deadline.atZone(SEOUL).toLocalDate() < day) {
+            entry.request =
+                entry.request.copy(
+                    deadline =
+                        minOf(
+                            now.plusSeconds(1800),
+                            day.atTime(15, 14, 30).atZone(SEOUL).toInstant(),
+                        )
+                )
+        }
         val price = if (request.side == Side.BUY) q.ask else q.bid
+        entry.minimum = minOf(entry.minimum ?: price, price)
+        entry.maximum = maxOf(entry.maximum ?: price, price)
         val acceptable =
             if (request.side == Side.BUY) price <= request.strategyPrice
             else price >= request.strategyPrice
@@ -144,30 +201,47 @@ class NamuExecutionGate : ExecutionGate {
             if (!buying && rounded < extreme) trigger = max(bound.toDouble(), rounded)
         }
         entry.trigger = trigger
-        entry.ready = now >= request.deadline || if (buying) price > trigger else price < trigger
+        entry.ready =
+            now >= entry.request.deadline || if (buying) price > trigger else price < trigger
         entry.message = if (entry.ready) "주문 조건 충족 · 최종 위험검사 대기" else "반전 추적 중"
     }
 
     override fun retain(keys: Set<String>) {
-        entries.keys.retainAll(keys)
+        entries.values.forEach {
+            if (it.request.key !in keys) {
+                it.active = false
+                it.ready = false
+                it.trigger = null
+            }
+        }
+        persist()
     }
 
     override fun clear() {
         entries.clear()
         snapshots.clear()
+        scope = null
+        saved = emptyList()
     }
 
     override fun targets() =
-        entries.values.map {
-            TargetStatus(
-                it.request.key,
-                it.request.symbol,
-                it.request.side,
-                it.request.strategyPrice,
-                it.extreme,
-                it.trigger,
-                it.ready,
-                it.message,
-            )
-        }
+        entries.values
+            .filter { it.active }
+            .map {
+                TargetStatus(
+                    it.request.key,
+                    it.request.symbol,
+                    it.request.side,
+                    it.request.strategyPrice,
+                    it.extreme,
+                    it.trigger,
+                    it.ready,
+                    it.message,
+                    it.minimum,
+                    it.maximum,
+                    it.request.strategyId,
+                    it.request.groupId,
+                    it.request.occurrence,
+                )
+            }
 }

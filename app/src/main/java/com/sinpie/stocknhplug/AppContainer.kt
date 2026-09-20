@@ -36,7 +36,7 @@ class AppContainer private constructor(context: Context) {
                 )
             },
             TechnicalStrategy(),
-            NamuExecutionGate(),
+            NamuExecutionGate(EncryptedTrackingStore(vault)),
             GroupAlgorithmRegistry.defaults(),
         )
 

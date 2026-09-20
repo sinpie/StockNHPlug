@@ -1,6 +1,7 @@
 # StockNHPlug implementation rules
 
 ## Permanent user requirements
+- Before implementing, modifying, or testing a new user request, append its original wording to `docs/USER_REQUESTS.md`. Preserve prior entries verbatim; redact actual credentials only. Read that ledger and `docs/WORK_STATUS.md` when resuming after context compaction, and keep pending work and verification status current.
 - Kotlin Android application; Google Play publication is the intended destination.
 - Preserve application → trading → execution layering. Market/research providers are separate from execution.
 - API, market/research providers and strategy algorithms must be replaceable through explicit ports. Assemble concrete implementations only at AppContainer; strategy replacement must not bypass common risk/journal gates. Run scripts/check_architecture.py and maintain docs/EXTENDING.md when contracts change.

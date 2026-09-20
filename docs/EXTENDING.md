@@ -83,3 +83,10 @@ flowchart TD
 교체 시세 어댑터도 PriceSnapshot.valid의 양방향 호가/당일 가격범위 검사를 통과해야 합니다. 시세 수신시각이 증가해도 거래소 시각이 후퇴한 샘플은 상태 갱신에 쓰지 않습니다. UI Workspace는 AppState와 이벤트 콜백으로 테스트하며 구체 Broker를 참조하지 않습니다.
 
 새 Broker도 OrderIntent.dispatchable을 실제 네트워크 전송 직전에 검사해야 합니다. expiresAt을 현재 시각 기준으로 다시 계산하거나 연장하지 마세요. 이는 교체 가능한 실행 포트의 계약입니다.
+# 2026-09-20 추적 저장소 교체 계약
+
+- `TrackingStore.load/save(account, environment, records)` 구현은 증권사 ID·계좌·환경을 모두 격리해야 한다. 손상이나 저장 실패를 빈 목록/성공으로 숨기지 않는다. 실제 키 값과 추적 이력을 외부 서버로 보내지 않는다.
+- `ExecutionGate.activate`는 이력만 복원하고 새 검증 시세 전에는 실행을 승인하지 않는다. `clear`는 연결 메모리 해제이며 영속 삭제가 아니다. `retain`은 추적 제외 이력도 보존한다.
+- 타겟 식별자는 전략/그룹/종목/방향/회차를 구별하고 날짜 변경만으로 교체하지 않는다. 신규 전략은 `GroupDecision.occurrence`를 안정적으로 제공해야 한다. 같은 그룹에서 서로 다른 매매를 구분하려면 서로 다른 occurrence를 사용한다.
+- 전송 정책은 `QuoteTarget.strategyPrice`로 일별 제한을 판단하고 `trackingPrice`로 거리를 계산한다. 공유 시세 구독 때문에 서로 다른 타겟의 극값을 합치지 않는다. 공통 TradingEngine 위험/저널 게이트는 유지한다.
+- 추적 저장소 오류는 `TrackingStorageException`으로 전달하며 가격 조회 백오프로 흡수하지 않는다. REST/WS 경로 모두 안전 정지해야 한다.

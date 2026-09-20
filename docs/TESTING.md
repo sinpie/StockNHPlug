@@ -47,3 +47,11 @@
 6. 검증 결과와 제한을 기록한 뒤 해당 범위의 배포 조건이 충족될 때만 GitHub 프리릴리즈에 APK 2개, SHA256SUMS.txt, APK-VERIFICATION.json을 첨부합니다. keystore/비밀번호/API 데이터는 첨부하지 않습니다.
 
 속성을 생략하면 원래 production ID의 서명되지 않은 release 산출물을 생성합니다. Preview AAB는 Play 제출용이 아닙니다. 정식 서명·버전 정책은 RELEASE.md의 별도 게이트입니다.
+# 2026-09-20 추적 변경 재현 항목
+
+- `PriceTrackingTest`, `TrackingContinuityTest`: 9.99/10/10.01% 경계, 거리별 간격, OFF 최대 10초 예약, 상위 제시가 제한, 다음 날 재확인, 다중 그룹의 독립 극값, 재연결 복원과 계좌·환경 격리.
+- `HybridMonitorTest`: 초기/원거리 빈 소켓 미연결, 근접 전환·ACK, OFF REST만으로 반전 트리거, 모든 타겟 범위 밖 중단, 저장 오류가 시세 재시도로 흡수되지 않음.
+- `GroupCoordinatorTest`: 미완료 정기매수의 원래 occurrence·제시가·극값을 다음 날 유지하고 전송 전 SUBMITTING 저널 확인. 같은 종목의 서로 다른 전략/그룹별 타겟 분리. 가짜 증권 포트만 사용.
+- `LocalStoreInstrumentedTest`, `TrackingOptionsUiTest`: disposable Android 설치에서 실제 암호화 저장/복원·기존 설정 기본 ON 이관·OFF 유지·스위치 조작·실행 중 편집 잠금.
+
+Android 테스트는 실사용 설치에서 실행하지 않는다. 실제 실행 결과와 건수는 [VERIFICATION.md](VERIFICATION.md)를 확인한다. 10초는 예약 간격 검증이며 OS/통신 지연까지 포함한 수신 보장 테스트가 아니다.

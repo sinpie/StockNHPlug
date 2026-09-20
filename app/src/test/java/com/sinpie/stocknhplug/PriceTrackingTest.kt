@@ -134,19 +134,21 @@ class PriceTrackingTest {
     }
 
     @Test
-    fun exactlyTenPercentUsesWebsocketAndCurrentPriceDenominator() {
+    fun exactlyTenPercentUsesRestAndCurrentPriceDenominator() {
         val p = HybridQuotePolicy()
         p.setTargets(mapOf("005930" to listOf(11000)), now)
         p.observe(sample(10000), 0.0, now)
+        assertTrue(p.websocketSymbols(10).isEmpty())
+        p.setTargets(mapOf("005930" to listOf(10999)), now)
         assertEquals(setOf("005930"), p.websocketSymbols(10))
-        p.setTargets(mapOf("005930" to listOf(11010)), now)
+        p.setTargets(mapOf("005930" to listOf(11001)), now)
         assertTrue(p.websocketSymbols(10).isEmpty())
     }
 
     @Test
     fun cachedOrOlderSampleCannotSlideDueOrChangeRouting() {
         val p = HybridQuotePolicy()
-        p.setTargets(mapOf("005930" to listOf(11000)), now)
+        p.setTargets(mapOf("005930" to listOf(10900)), now)
         val current = sample(10000)
         p.observe(current, 0.0, now)
         p.observe(current, 4.0, now.plusSeconds(4))

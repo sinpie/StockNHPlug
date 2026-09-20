@@ -35,8 +35,66 @@ class LocalStoreInstrumentedTest {
     @After
     fun cleanup() {
         // 공유 Keystore alias는 삭제하지 않고 이 테스트가 만든 파일만 제거한다.
-        listOf("journal", "events", "snapshot", "groupbook", "groupfills").forEach(vault::delete)
+        listOf("journal", "events", "snapshot", "groupbook", "groupfills", "settings", "tracking")
+            .forEach(vault::delete)
         check(directory.delete())
+    }
+
+    @Test
+    fun websocketOptionDefaultsOnAndPersistsOffWithLegacyMigration() {
+        val store = LocalStore(vault)
+        assertTrue(store.settings().websocketEnabled)
+        store.saveSettings(Strategy(websocketEnabled = false))
+        assertFalse(LocalStore(vault).settings().websocketEnabled)
+        val legacy = vault.read("settings")!!
+        legacy.remove("websocket")
+        vault.write("settings", legacy)
+        assertTrue(LocalStore(vault).settings().websocketEnabled)
+        legacy.put("websocket", "invalid")
+        vault.write("settings", legacy)
+        assertTrue(runCatching { LocalStore(vault).settings() }.isFailure)
+    }
+
+    @Test
+    fun trackingHistoryIsEncryptedScopedAndRestoredWithoutReadyState() {
+        val account = Account("tracking-test", Environment.MOCK, "test")
+        val at = Instant.parse("2026-09-21T01:00:00Z")
+        val store = com.sinpie.stocknhplug.data.EncryptedTrackingStore(vault)
+        val row =
+            TrackingRecord(
+                TargetRequest(
+                    "test-target",
+                    "005930",
+                    Side.BUY,
+                    10000,
+                    at.plusSeconds(1800),
+                    "averaging",
+                    "g1",
+                    "test",
+                ),
+                9000,
+                9000,
+                10000,
+            )
+        store.save(account, Environment.MOCK, listOf(row))
+        store.save(
+            account.copy(number = "other"),
+            Environment.MOCK,
+            listOf(row.copy(extreme = 8000)),
+        )
+        assertEquals(
+            listOf(row),
+            com.sinpie.stocknhplug.data
+                .EncryptedTrackingStore(vault)
+                .load(account, Environment.MOCK),
+        )
+        assertTrue(store.load(account, Environment.LIVE).isEmpty())
+        assertFalse(File(directory, "tracking.enc").readText().contains("tracking-test"))
+        val gate = com.sinpie.stocknhplug.trading.NamuExecutionGate(store)
+        gate.activate(account, Environment.MOCK)
+        assertEquals(9000L, gate.targets().single().extreme)
+        assertFalse(gate.targets().single().ready)
+        assertNull(gate.targets().single().trigger)
     }
 
     @Test

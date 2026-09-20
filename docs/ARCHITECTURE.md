@@ -132,3 +132,8 @@ HTTP 성공과 업무 성공을 구분합니다. 오류 문구/심각도와 응�
 `PriceSnapshot.valid`는 체결가와 양방향 호가의 당일 상하한·신선도를 함께 검증합니다. monitor/gate/policy는 이전 거래소 시각 메시지로 되돌아가지 않습니다. `TradingEngine.validateDispatch`는 가능수량 조회 후와 영속 예약 후에 장중 여부·시세·잔고·정지를 재검사합니다. Broker 호출 전 검사 실패는 REJECTED/정지, Broker 호출 이후 불명확한 결과는 UNKNOWN/정지입니다.
 
 `OrderIntent.expiresAt`는 생성 후 5초, 원래 수신/거래소 시각+15초, 잔고 시각+60초 중 가장 이른 시각입니다. `dispatchable`은 미래 주문·정규시간·정확한 만료 경계를 검사합니다. NhBroker의 실제 HTTP dispatchGuard에서도 이 원래 기한을 사용해 인증/호출 대기로 수명이 늘어나지 않습니다. LocalStore는 암호화 저널에 expiresAt을 저장하며 이전 파일은 at+5초로 읽습니다. 이전/미확인 저널 재전송 기능은 추가하지 않습니다.
+# 2026-09-20 추적 이력 저장 및 독립 타겟
+
+`TargetRequest`는 전략 ID·그룹 ID·발생 회차를 명시한다. `GroupTradingCoordinator`는 날짜 대신 전략/그룹/종목/방향/회차/주문 회수로 키를 구성하고 미완료 키를 재사용한다. 동일 종목의 가격 수신은 공유하되 `NamuExecutionGate.Entry`의 극값·최고/최저·기한은 타겟별로 분리한다.
+
+새 도메인 포트 `TrackingStore`와 값 `TrackingRecord`가 추적 이력 저장을 담당한다. `EncryptedTrackingStore`는 이를 `SecureVault` 위에 구현하고, `AppContainer`에서만 gate에 주입한다. `activate(account, environment)`는 현재 범위의 이력을 불러오며 `clear()`는 메모리를 해제한다. `retain()`은 감시 해제된 이력을 비활성 보존한다. 시세 캐시·ready·이전 트리거는 복원하지 않는다. 상세 정책은 [가격 추적](PRICE_TRACKING.md).

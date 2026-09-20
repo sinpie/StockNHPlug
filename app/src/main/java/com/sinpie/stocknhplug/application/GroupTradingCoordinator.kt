@@ -70,14 +70,18 @@ class GroupTradingCoordinator(
             executionGate
                 .targets()
                 .filter { target ->
-                    enabled.any { target.key.startsWith(it.id + "|") } &&
-                        target.key.endsWith("|$todayDate") &&
-                        GroupLedger.ordersFor(account, orders).none {
-                            it.intent.groupId == target.key.substringBefore('|') &&
+                    enabled.any {
+                        it.id == target.groupId &&
+                            it.strategyId == target.strategyId &&
+                            it.symbols.any { symbol -> symbol.symbol == target.symbol }
+                    } &&
+                        GroupLedger.ordersFor(account, orders).count {
+                            it.intent.groupId == target.groupId &&
+                                it.intent.strategyId == target.strategyId &&
                                 it.intent.symbol == target.symbol &&
                                 it.intent.side == target.side &&
-                                it.intent.at.atZone(SEOUL).toLocalDate() == todayDate
-                        }
+                                it.intent.occurrence == target.occurrence
+                        } <= (target.key.substringAfterLast('|').toIntOrNull() ?: -1)
                 }
                 .map { it.key }
                 .toSet()
@@ -111,9 +115,21 @@ class GroupTradingCoordinator(
             val schedule = group.effectiveSchedule(plan)
             val occurrence = schedule.occurrence(now)
             val scheduled =
-                if (occurrence == null) emptyList()
+                if (!schedule.enabled) emptyList()
                 else
                     group.symbols.mapNotNull { item ->
+                        val pendingSchedule =
+                            executionGate.targets().firstOrNull {
+                                it.strategyId == plan.id &&
+                                    it.groupId == group.id &&
+                                    it.symbol == item.symbol &&
+                                    it.side == Side.BUY &&
+                                    it.occurrence.startsWith("schedule:")
+                            }
+                        val scheduledOccurrence =
+                            pendingSchedule?.occurrence
+                                ?: occurrence?.let { "schedule:$it" }
+                                ?: return@mapNotNull null
                         val price = validQuotes.getValue(item.symbol).ask
                         val budget =
                             minOf(
@@ -123,14 +139,7 @@ class GroupTradingCoordinator(
                             )
                         val qty = (budget / (price * 1.01)).toLong()
                         if (qty == 0L) null
-                        else
-                            GroupDecision(
-                                item.symbol,
-                                Side.BUY,
-                                qty,
-                                "정기매수",
-                                "schedule:$occurrence",
-                            )
+                        else GroupDecision(item.symbol, Side.BUY, qty, "정기매수", scheduledOccurrence)
                     }
             val recommended =
                 group.symbols.mapNotNull { item ->
@@ -200,8 +209,28 @@ class GroupTradingCoordinator(
                     continue
                 val owned = positions.find { it.symbol == decision.symbol }?.quantity ?: 0
                 val quote = validQuotes.getValue(decision.symbol)
+                // 날짜는 타겟 식별자가 아니다. 미완료 회차를 먼저 이어가며 정기매수의 원래 회차도 보존한다.
+                // 같은 종목이라도 전략/그룹/방향/회차가 다르면 독립 Entry를 사용한다.
+                val pending =
+                    executionGate.targets().firstOrNull {
+                        it.strategyId == plan.id &&
+                            it.groupId == group.id &&
+                            it.symbol == decision.symbol &&
+                            it.side == decision.side &&
+                            (it.occurrence == decision.occurrence ||
+                                (it.occurrence.startsWith("schedule:") &&
+                                    decision.occurrence.startsWith("schedule:")))
+                    }
+                val effectiveOccurrence = pending?.occurrence ?: decision.occurrence
+                val cycle =
+                    scoped.count {
+                        it.intent.symbol == decision.symbol &&
+                            it.intent.side == decision.side &&
+                            it.intent.occurrence == effectiveOccurrence
+                    }
                 val key =
-                    "${group.id}|${decision.symbol}|${decision.side}|${decision.occurrence}|$todayDate"
+                    pending?.key
+                        ?: "${group.id}|${plan.id}|${decision.symbol}|${decision.side}|$effectiveOccurrence|$cycle"
                 val target =
                     decision.targetPrice
                         ?: executionGate.targets().find { it.key == key }?.strategyPrice
@@ -210,7 +239,16 @@ class GroupTradingCoordinator(
                 val deadline = minOf(now.plusSeconds(1800), close)
                 if (
                     !executionGate.evaluate(
-                        TargetRequest(key, decision.symbol, decision.side, target, deadline),
+                        TargetRequest(
+                            key,
+                            decision.symbol,
+                            decision.side,
+                            target,
+                            deadline,
+                            plan.id,
+                            group.id,
+                            effectiveOccurrence,
+                        ),
                         quote,
                         now,
                     )
@@ -267,7 +305,7 @@ class GroupTradingCoordinator(
                     GroupAllocation(
                         plan.id,
                         group.id,
-                        decision.occurrence,
+                        effectiveOccurrence,
                         if (decision.side == Side.BUY) buyQuantity else decision.quantity,
                         owned,
                         minOf(availableCash, usableCash),

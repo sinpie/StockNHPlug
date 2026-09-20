@@ -47,6 +47,9 @@ data class TargetRequest(
     val side: Side,
     val strategyPrice: Long,
     val deadline: Instant,
+    val strategyId: String = "",
+    val groupId: String = "",
+    val occurrence: String = "",
 )
 
 data class TargetStatus(
@@ -58,10 +61,36 @@ data class TargetStatus(
     val trigger: Double?,
     val ready: Boolean,
     val message: String,
+    val minimum: Long? = null,
+    val maximum: Long? = null,
+    val strategyId: String = "",
+    val groupId: String = "",
+    val occurrence: String = "",
 )
+
+/** 주문 접수/체결 원장과 별개인 추적 이력. ready와 시세 캐시는 복원하지 않는다. */
+data class TrackingRecord(
+    val request: TargetRequest,
+    val extreme: Long? = null,
+    val minimum: Long? = null,
+    val maximum: Long? = null,
+    val active: Boolean = true,
+)
+
+/** 구현체가 계좌·증권사·환경별로 암호화 저장한다. 저장 실패는 거래를 중단해야 한다. */
+interface TrackingStore {
+    fun load(account: Account, environment: Environment): List<TrackingRecord>
+
+    fun save(account: Account, environment: Environment, records: List<TrackingRecord>)
+}
+
+/** 저장 실패는 네트워크 재조회 대상으로 분류하면 안 된다. 원시 예외/경로를 UI에 노출하지 않는다. */
+class TrackingStorageException : IllegalStateException("추적 이력 저장소 확인 필요")
 
 /** 전략은 제시가격만 전달한다. 추적계층을 교체해도 최종 TradingEngine의 위험/저널 검사는 유지된다. */
 interface ExecutionGate {
+    fun activate(account: Account, environment: Environment) {}
+
     fun evaluate(request: TargetRequest, quote: Quote, now: Instant): Boolean
 
     fun observe(snapshot: PriceSnapshot, now: Instant)

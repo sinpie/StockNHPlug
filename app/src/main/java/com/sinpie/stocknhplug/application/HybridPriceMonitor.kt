@@ -14,17 +14,19 @@ class HybridPriceMonitor(
     private val onEvent: (String) -> Unit,
     private val monotonic: () -> Double = { System.nanoTime() / 1e9 },
     private val clock: () -> Instant = Instant::now,
+    private val websocketEnabled: Boolean = true,
 ) {
-    private val policy = HybridQuotePolicy()
+    private val policy = HybridQuotePolicy(websocketEnabled)
     private val metadata = mutableMapOf<String, MarketRules>()
     private val latest = mutableMapOf<String, PriceSnapshot>()
     private var active = emptySet<String>()
     private var modes = emptyMap<String, String>()
-    private var reconnectAt = monotonic() + 30
+    private var reconnectAt = 0.0
     private var reconnectDelay = 30.0
 
     /** 콜백은 controller의 Main scope에서 직렬 호출한다. 당일 REST 범위가 없으면 WS를 채택하지 않는다. */
     fun onWebsocket(quote: Quote) {
+        if (!websocketEnabled) return
         val rules = metadata[quote.symbol] ?: return
         if (quote.symbol !in active || quote.symbol !in stream.acknowledged()) return
         accept(PriceSnapshot(quote, rules, PriceSource.WEBSOCKET))
@@ -49,9 +51,71 @@ class HybridPriceMonitor(
     suspend fun step(symbols: Set<String>) {
         val now = clock()
         if (!trackingSession(now)) {
-            stream.replaceSubscriptions(emptySet())
+            stream.close()
             active = emptySet()
             return
+        }
+        updateTargets(symbols, now)
+        syncStream()
+        val healthy =
+            if (stream.isConnected()) active.intersect(stream.acknowledged()) else emptySet()
+        val due = policy.claim(monotonic(), healthy, now)
+        if (due != null) {
+            try {
+                refresh(due)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: TrackingStorageException) {
+                throw e
+            } catch (_: Exception) {
+                policy.failed(due, monotonic())
+                onEvent("$due 시세 조회 지연 · 가격 재확인 대기")
+            }
+            // REST can cross the boundary or move an armed reversal trigger this very step.
+            updateTargets(symbols, clock())
+            syncStream()
+        }
+        val current = statuses().associate { it.symbol to it.mode }
+        current
+            .filter { (symbol, mode) -> modes[symbol] != mode }
+            .forEach { (symbol, mode) -> onEvent("$symbol · $mode") }
+        modes = current
+    }
+
+    private fun updateTargets(symbols: Set<String>, now: Instant) {
+        val targets = gate.targets().groupBy { it.symbol }
+        policy.setRequests(
+            symbols.associateWith { code ->
+                targets[code].orEmpty().map {
+                    // 실제 트리거가 있으면 그 거리를 사용한다. 아직 무장 전이면 전략 제시가를 사용한다.
+                    QuoteTarget(
+                        it.strategyPrice.toDouble(),
+                        it.trigger?.takeIf { p -> p.isFinite() && p > 0 }
+                            ?: it.strategyPrice.toDouble(),
+                    )
+                }
+            },
+            now,
+            monotonic(),
+        )
+    }
+
+    /**
+     * Open no idle socket. Disabled/far-only modes close transport, including pending
+     * subscriptions.
+     */
+    private suspend fun syncStream() {
+        val desired = policy.websocketSymbols(10)
+        if (desired.isEmpty()) {
+            if (active.isNotEmpty() || stream.isConnected()) stream.close()
+            active = emptySet()
+            reconnectAt = 0.0
+            reconnectDelay = 30.0
+            return
+        }
+        if (desired != active) {
+            active = desired
+            if (stream.isConnected()) stream.replaceSubscriptions(desired)
         }
         if (!stream.isConnected() && monotonic() >= reconnectAt) {
             reconnectAt = monotonic() + reconnectDelay
@@ -64,37 +128,6 @@ class HybridPriceMonitor(
                 onEvent("WebSocket 재연결 대기 · REST 추적 유지")
             }
         } else if (stream.isConnected()) reconnectDelay = 30.0
-        val targets = gate.targets().groupBy { it.symbol }
-        policy.setTargets(
-            symbols.associateWith { code ->
-                targets[code].orEmpty().map {
-                    // 실제 트리거가 있으면 그 거리를 사용한다. 아직 무장 전이면 전략 제시가를 사용한다.
-                    it.trigger?.toLong()?.takeIf { p -> p > 0 } ?: it.strategyPrice
-                }
-            },
-            now,
-        )
-        val desired = policy.websocketSymbols(10)
-        if (desired != active) {
-            stream.replaceSubscriptions(desired)
-            active = desired
-        }
-        val due = policy.claim(monotonic())
-        if (due != null) {
-            try {
-                refresh(due)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                policy.failed(due, monotonic())
-                onEvent("$due 시세 조회 지연 · 가격 재확인 대기")
-            }
-        }
-        val current = statuses().associate { it.symbol to it.mode }
-        current
-            .filter { (symbol, mode) -> modes[symbol] != mode }
-            .forEach { (symbol, mode) -> onEvent("$symbol · $mode") }
-        modes = current
     }
 
     fun statuses() = policy.statuses(active, stream.acknowledged(), clock())
@@ -113,12 +146,13 @@ class HybridPriceMonitor(
     }
 
     fun clear() {
+        stream.close()
         policy.clear()
         metadata.clear()
         latest.clear()
         modes = emptyMap()
         active = emptySet()
-        reconnectAt = monotonic() + 30
+        reconnectAt = 0.0
         reconnectDelay = 30.0
     }
 }

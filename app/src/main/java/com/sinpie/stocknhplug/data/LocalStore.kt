@@ -147,7 +147,8 @@ class LocalStore(private val vault: SecureVault) : OrderJournal {
                 .put("trail", s.trailingPercent)
                 .put("loss", s.maxSessionLoss)
                 .put("score", s.minScore)
-                .put("manage", s.manageHoldings),
+                .put("manage", s.manageHoldings)
+                .put("websocket", s.websocketEnabled),
         )
     }
 
@@ -167,6 +168,7 @@ class LocalStore(private val vault: SecureVault) : OrderJournal {
                 j.getLong("loss"),
                 j.getInt("score"),
                 j.getBoolean("manage"),
+                if (j.has("websocket")) j.getBoolean("websocket") else true,
             )
             .also { it.validate() }
     }
