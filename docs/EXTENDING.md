@@ -90,3 +90,8 @@ flowchart TD
 - 타겟 식별자는 전략/그룹/종목/방향/회차를 구별하고 날짜 변경만으로 교체하지 않는다. 신규 전략은 `GroupDecision.occurrence`를 안정적으로 제공해야 한다. 같은 그룹에서 서로 다른 매매를 구분하려면 서로 다른 occurrence를 사용한다.
 - 전송 정책은 `QuoteTarget.strategyPrice`로 일별 제한을 판단하고 `trackingPrice`로 거리를 계산한다. 공유 시세 구독 때문에 서로 다른 타겟의 극값을 합치지 않는다. 공통 TradingEngine 위험/저널 게이트는 유지한다.
 - 추적 저장소 오류는 `TrackingStorageException`으로 전달하며 가격 조회 백오프로 흡수하지 않는다. REST/WS 경로 모두 안전 정지해야 한다.
+# 2026-09-20 비동기 제공자 계약
+
+조회 제공자는 coroutine 취소를 전파해야 하며 CancellationException을 일반 오류/빈 응답으로 바꾸지 않는다. controller는 비협력 제공자도 반환 후 취소/세대 검사로 차단한다. `MarketStream` 구현체도 이전 소켓 콜백을 폐기해야 하며 controller가 연결 identity로 한 번 더 검증한다. `HybridPriceMonitor.clear` 이후 이전 REST 응답은 폐기한다. 테스트에서 dispatcher/IO dispatcher를 주입해 실제 반환 순서를 제어할 수 있다.
+
+UI 지표 확장은 `AccountAnalytics`와 읽기 전용 화면 컴포넌트에서 수행한다. 보유 비중/수익률/스프레드를 주문 가격·위험 판정에 재사용하지 않는다. [ASYNC_REVIEW.md](ASYNC_REVIEW.md)에 정의한 분모와 미제공 처리 기준을 유지한다.

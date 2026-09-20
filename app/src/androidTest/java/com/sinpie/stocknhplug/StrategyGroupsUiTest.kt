@@ -87,7 +87,7 @@ class StrategyGroupsUiTest {
                 }
             }
         }
-        compose.onNodeWithText("전략과 그룹").assertIsDisplayed()
+        compose.onNodeWithText("전략 관리").assertIsDisplayed()
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         File(context.getExternalFilesDir(null), "strategy-groups.png").outputStream().use {
             compose

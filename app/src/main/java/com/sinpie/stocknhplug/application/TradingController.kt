@@ -30,6 +30,11 @@ data class AppState(
     val snapshots: List<HoldingSnapshot> = emptyList(),
     val pnl: List<DailyPnl> = emptyList(),
     val busy: Boolean = false,
+    val operation: String? = null,
+    val completedItems: Int = 0,
+    val totalItems: Int = 0,
+    val messageError: Boolean = false,
+    val pnlLoadedAt: Instant? = null,
     val running: Boolean = false,
     val connected: Boolean = false,
     val message: String = "NHPlug 모의계좌를 연결해 시작하세요.",
@@ -44,8 +49,13 @@ class TradingController(
     private val strategy: TradingStrategy,
     private val executionGate: ExecutionGate,
     private val groupRegistry: GroupAlgorithmRegistry = GroupAlgorithmRegistry.defaults(),
+    dispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val scope = CoroutineScope(SupervisorJob() + dispatcher)
+    private var actionJob: Job? = null
+    @Volatile private var generation = 0L
+    @Volatile private var connectionId = 0L
     private var broker: Broker? = null
     private var socket: MarketStream? = null
     private var engine: TradingEngine? = null
@@ -90,6 +100,7 @@ class TradingController(
 
     /** 연결/설정 변경 직후 이전 가격과 가상 타겟을 비운다. 주문 저널은 수정하지 않는다. */
     private fun resetTrackingView() {
+        generation++
         monitor?.clear()
         executionGate.clear()
         change { it.copy(quotes = emptyMap(), tracking = emptyList(), quoteRoutes = emptyList()) }
@@ -99,7 +110,14 @@ class TradingController(
     private fun log(message: String, level: String = "INFO") {
         try {
             store.log(level, message)
-            change { it.copy(events = store.events(), orders = store.records(), message = message) }
+            change {
+                it.copy(
+                    events = store.events(),
+                    orders = store.records(),
+                    message = message,
+                    messageError = level == "ERROR",
+                )
+            }
         } catch (_: Exception) {
             engine?.stop()
             change { it.copy(running = false, storageError = true, message = "기록 저장 실패 · 자동매매 잠금") }
@@ -107,80 +125,87 @@ class TradingController(
     }
 
     /** 정지 상태에서 키를 교체한다. 이전 계정의 토큰·브로커·조회 결과를 함께 무효화한다. */
-    fun saveCredentials(key: String, secret: String, dart: String) = task {
-        check(!state.value.running)
-        require(key.isNotBlank() && secret.isNotBlank())
-        store.saveCredentials(key, secret, dart)
-        socket?.close()
-        resetTrackingView()
-        broker = null
-        engine = null
-        researchRepository = null
-        groups = null
-        monitor?.clear()
-        monitor = null
-        priceProvider = null
-        executionGate.clear()
-        change {
-            it.copy(
-                hasCredentials = true,
-                connected = false,
-                accounts = emptyList(),
-                selected = null,
-                portfolio = null,
-                groupPositions = emptyMap(),
-                groupExecutionReady = false,
-                tracking = emptyList(),
-                quoteRoutes = emptyList(),
-                quotes = emptyMap(),
-                executions = emptyList(),
-                pnl = emptyList(),
-                research = emptyList(),
-                candidates = emptyList(),
-            )
-        }
-        log("인증정보를 기기 내부에 암호화 저장했습니다.")
-    }
-
-    /** 그룹/전략 설정은 정지 상태에서만 변경한다. 기록이 있는 그룹의 소유권을 바꾸거나 삭제하지 않는다. */
-    fun saveBook(book: StrategyBook) = task {
-        book.validate()
-        book.plans.forEach { groupRegistry.get(it.algorithmId) }
-        val previous = state.value.book
-        val recorded = store.records().map { it.intent.groupId }.filter { it.isNotBlank() }.toSet()
-        check(
-            ParkingPolicy.GROUP_ID !in recorded || book.parking.symbol == previous.parking.symbol
-        ) {
-            "파킹 거래 기록이 있으면 종목을 변경할 수 없습니다. 기존 원장을 보존하세요."
-        }
-        previous.groups
-            .filter { it.id in recorded }
-            .forEach { old ->
-                val next =
-                    book.groups.find { it.id == old.id } ?: error("거래 기록이 있는 그룹은 삭제 대신 정지하세요.")
-                check(
-                    next.strategyId == old.strategyId &&
-                        next.symbols.map { it.symbol }.containsAll(old.symbols.map { it.symbol })
-                )
-                check(
-                    book.plans.single { it.id == next.strategyId }.algorithmId ==
-                        previous.plans.single { it.id == old.strategyId }.algorithmId
+    fun saveCredentials(key: String, secret: String, dart: String) =
+        task("키 저장") {
+            check(!state.value.running)
+            require(key.isNotBlank() && secret.isNotBlank())
+            store.saveCredentials(key, secret, dart)
+            socket?.close()
+            resetTrackingView()
+            broker = null
+            engine = null
+            researchRepository = null
+            groups = null
+            monitor?.clear()
+            monitor = null
+            priceProvider = null
+            executionGate.clear()
+            change {
+                it.copy(
+                    hasCredentials = true,
+                    connected = false,
+                    accounts = emptyList(),
+                    selected = null,
+                    portfolio = null,
+                    groupPositions = emptyMap(),
+                    groupExecutionReady = false,
+                    tracking = emptyList(),
+                    quoteRoutes = emptyList(),
+                    quotes = emptyMap(),
+                    executions = emptyList(),
+                    pnl = emptyList(),
+                    pnlLoadedAt = null,
+                    research = emptyList(),
+                    candidates = emptyList(),
                 )
             }
-        store.saveStrategyBook(book)
-        socket?.close()
-        resetTrackingView()
-        change {
-            it.copy(
-                book = book,
-                connected = false,
-                quotes = emptyMap(),
-                research = emptyList(),
-                candidates = emptyList(),
-            )
+            log("인증정보를 기기 내부에 암호화 저장했습니다.")
         }
-        log("전략·그룹 설정 저장 완료 · 계좌를 다시 연결하세요.")
-    }
+
+    /** 그룹/전략 설정은 정지 상태에서만 변경한다. 기록이 있는 그룹의 소유권을 바꾸거나 삭제하지 않는다. */
+    fun saveBook(book: StrategyBook) =
+        task("전략 저장") {
+            book.validate()
+            book.plans.forEach { groupRegistry.get(it.algorithmId) }
+            val previous = state.value.book
+            val recorded =
+                store.records().map { it.intent.groupId }.filter { it.isNotBlank() }.toSet()
+            check(
+                ParkingPolicy.GROUP_ID !in recorded ||
+                    book.parking.symbol == previous.parking.symbol
+            ) {
+                "파킹 거래 기록이 있으면 종목을 변경할 수 없습니다. 기존 원장을 보존하세요."
+            }
+            previous.groups
+                .filter { it.id in recorded }
+                .forEach { old ->
+                    val next =
+                        book.groups.find { it.id == old.id } ?: error("거래 기록이 있는 그룹은 삭제 대신 정지하세요.")
+                    check(
+                        next.strategyId == old.strategyId &&
+                            next.symbols
+                                .map { it.symbol }
+                                .containsAll(old.symbols.map { it.symbol })
+                    )
+                    check(
+                        book.plans.single { it.id == next.strategyId }.algorithmId ==
+                            previous.plans.single { it.id == old.strategyId }.algorithmId
+                    )
+                }
+            store.saveStrategyBook(book)
+            socket?.close()
+            resetTrackingView()
+            change {
+                it.copy(
+                    book = book,
+                    connected = false,
+                    quotes = emptyMap(),
+                    research = emptyList(),
+                    candidates = emptyList(),
+                )
+            }
+            log("전략·그룹 설정 저장 완료 · 계좌를 다시 연결하세요.")
+        }
 
     /** 여러 그룹의 같은 종목은 한 번만 연구·구독한다. 주문 소유권은 그룹 ID로 따로 유지한다. */
     private fun configuredSymbols(): List<String> =
@@ -191,119 +216,146 @@ class TradingController(
             .ifEmpty { state.value.settings.symbols }
 
     /** 전략 검증과 암호화 저장 후 구독을 해제한다. 새 종목 목록은 명시적 재연결 때 적용된다. */
-    fun saveSettings(settings: Strategy) = task {
-        check(!state.value.running)
-        store.saveSettings(settings)
-        socket?.close()
-        resetTrackingView()
-        change {
-            it.copy(
-                settings = settings,
-                candidates = emptyList(),
-                research = emptyList(),
-                connected = false,
-                quotes = emptyMap(),
-            )
-        }
-        log("설정 저장 완료 · 관심종목과 시세 추적 설정을 적용하려면 계좌를 다시 연결하세요.")
-    }
-
-    /** 연결 버튼 진입점: 준비 상태 초기화 → 인증/계좌 목록 → 잔고·체결 → WebSocket 구독 순서다. 중간 실패는 connected=false를 유지한다. */
-    fun connect() = task {
-        check(!state.value.running && !state.value.storageError)
-        socket?.close()
-        resetTrackingView()
-        change {
-            it.copy(
-                connected = false,
-                accounts = emptyList(),
-                selected = null,
-                portfolio = null,
-                groupPositions = emptyMap(),
-                executions = emptyList(),
-                pnl = emptyList(),
-                quotes = emptyMap(),
-            )
-        }
-        val session =
-            sessionFactory.create(
-                { quote ->
-                    scope.launch {
-                        try {
-                            monitor?.onWebsocket(quote)
-                        } catch (_: TrackingStorageException) {
-                            stop("추적 이력 저장 실패 · 자동매매 정지")
-                            change { it.copy(storageError = true) }
-                        }
-                    }
-                },
-                { msg -> scope.launch { log(msg) } },
-                { scope.launch { log("시세 WebSocket 연결 끊김 · 검증된 REST 시세로 추적, 재연결 대기") } },
-            )
-        broker = session.broker
-        check(session.broker.environment == Environment.MOCK) { "현재 배포 구성은 모의 거래만 허용합니다." }
-        socket = session.stream
-        priceProvider = session.currentPrices
-        executionGate.clear()
-        monitor?.clear()
-        monitor =
-            session.currentPrices?.let { prices ->
-                HybridPriceMonitor(
-                    prices,
-                    session.stream,
-                    executionGate,
-                    { q -> change { it.copy(quotes = it.quotes + (q.symbol to q)) } },
-                    { log(it) },
-                    websocketEnabled = state.value.settings.websocketEnabled,
+    fun saveSettings(settings: Strategy) =
+        task("설정 저장") {
+            check(!state.value.running)
+            store.saveSettings(settings)
+            socket?.close()
+            resetTrackingView()
+            change {
+                it.copy(
+                    settings = settings,
+                    candidates = emptyList(),
+                    research = emptyList(),
+                    connected = false,
+                    quotes = emptyMap(),
                 )
             }
-        researchRepository = session.research
-        engine = TradingEngine(session.broker, store, strategy)
-        groups =
-            GroupTradingCoordinator(
-                store,
-                session.groupExecutions,
-                groupRegistry,
-                engine!!,
-                executionGate,
-            )
-        change { it.copy(groupExecutionReady = session.groupExecutions != null) }
-        val accounts = session.broker.accounts()
-        check(
-            accounts.isNotEmpty() &&
-                accounts.all {
-                    it.brokerId == session.broker.id && it.validFor(session.broker.environment)
-                }
-        ) {
-            "사용 가능한 계좌가 없습니다. API 신청 상태를 확인하세요."
+            log("설정 저장 완료 · 관심종목과 시세 추적 설정을 적용하려면 계좌를 다시 연결하세요.")
         }
-        change { it.copy(accounts = accounts, selected = accounts.first(), quotes = emptyMap()) }
-        refreshInternal()
-        subscribeSelectedAccount()
-        change { it.copy(connected = true) }
-        log("모의투자 연결 완료 · ${accounts.size}개 계좌")
-    }
+
+    /** 연결 버튼 진입점: 준비 상태 초기화 → 인증/계좌 목록 → 잔고·체결 → WebSocket 구독 순서다. 중간 실패는 connected=false를 유지한다. */
+    fun connect() =
+        task("계좌 연결") {
+            check(!state.value.running && !state.value.storageError)
+            socket?.close()
+            resetTrackingView()
+            val owner = ++connectionId
+            change {
+                it.copy(
+                    connected = false,
+                    accounts = emptyList(),
+                    selected = null,
+                    portfolio = null,
+                    groupPositions = emptyMap(),
+                    executions = emptyList(),
+                    pnl = emptyList(),
+                    quotes = emptyMap(),
+                    research = emptyList(),
+                    candidates = emptyList(),
+                    pnlLoadedAt = null,
+                )
+            }
+            val session =
+                sessionFactory.create(
+                    { quote ->
+                        val queuedGeneration = generation
+                        scope.launch {
+                            if (
+                                owner != connectionId ||
+                                    queuedGeneration != generation ||
+                                    !state.value.connected
+                            )
+                                return@launch
+                            try {
+                                monitor?.onWebsocket(quote)
+                            } catch (_: TrackingStorageException) {
+                                stop("추적 이력 저장 실패 · 자동매매 정지")
+                                change { it.copy(storageError = true) }
+                            }
+                        }
+                    },
+                    { msg -> scope.launch { if (owner == connectionId) log(msg) } },
+                    {
+                        scope.launch {
+                            if (owner == connectionId)
+                                log("시세 WebSocket 연결 끊김 · 검증된 REST 시세로 추적, 재연결 대기")
+                        }
+                    },
+                )
+            broker = session.broker
+            check(session.broker.environment == Environment.MOCK) { "현재 배포 구성은 모의 거래만 허용합니다." }
+            socket = session.stream
+            priceProvider = session.currentPrices
+            executionGate.clear()
+            monitor?.clear()
+            monitor =
+                session.currentPrices?.let { prices ->
+                    HybridPriceMonitor(
+                        prices,
+                        session.stream,
+                        executionGate,
+                        { q ->
+                            if (owner == connectionId)
+                                change { it.copy(quotes = it.quotes + (q.symbol to q)) }
+                        },
+                        { if (owner == connectionId) log(it) },
+                        websocketEnabled = state.value.settings.websocketEnabled,
+                    )
+                }
+            researchRepository = session.research
+            engine = TradingEngine(session.broker, store, strategy)
+            groups =
+                GroupTradingCoordinator(
+                    store,
+                    session.groupExecutions,
+                    groupRegistry,
+                    engine!!,
+                    executionGate,
+                )
+            change { it.copy(groupExecutionReady = session.groupExecutions != null) }
+            val accounts = read { session.broker.accounts() }
+            check(
+                accounts.isNotEmpty() &&
+                    accounts.all {
+                        it.brokerId == session.broker.id && it.validFor(session.broker.environment)
+                    }
+            ) {
+                "사용 가능한 계좌가 없습니다. API 신청 상태를 확인하세요."
+            }
+            change {
+                it.copy(accounts = accounts, selected = accounts.first(), quotes = emptyMap())
+            }
+            refreshInternal()
+            subscribeSelectedAccount()
+            change { it.copy(connected = true) }
+            log("모의투자 연결 완료 · ${accounts.size}개 계좌")
+        }
 
     /** 계좌 선택 진입점. 이전 계좌의 가격과 손익을 지우고 새 계좌의 보유종목을 다시 구독한다. */
-    fun select(account: Account) = task {
-        check(!state.value.running && account in state.value.accounts)
-        socket?.close()
-        resetTrackingView()
-        change {
-            it.copy(
-                connected = false,
-                selected = account,
-                portfolio = null,
-                groupPositions = emptyMap(),
-                executions = emptyList(),
-                pnl = emptyList(),
-                quotes = emptyMap(),
-            )
+    fun select(account: Account) =
+        task("계좌 전환") {
+            check(!state.value.running && account in state.value.accounts)
+            socket?.close()
+            resetTrackingView()
+            change {
+                it.copy(
+                    connected = false,
+                    selected = account,
+                    portfolio = null,
+                    groupPositions = emptyMap(),
+                    executions = emptyList(),
+                    pnl = emptyList(),
+                    pnlLoadedAt = null,
+                    research = emptyList(),
+                    candidates = emptyList(),
+                    quotes = emptyMap(),
+                )
+            }
+            refreshInternal()
+            subscribeSelectedAccount()
+            change { it.copy(connected = true) }
         }
-        refreshInternal()
-        subscribeSelectedAccount()
-        change { it.copy(connected = true) }
-    }
 
     /** 보유종목 보호를 관심종목보다 우선한다. 구독 상한을 넘으면 조용히 일부를 제외하지 않는다. */
     private suspend fun subscribeSelectedAccount() {
@@ -319,9 +371,10 @@ class TradingController(
     /** 선택 계좌의 잔고·체결을 모두 조회한 후 스냅샷을 저장한다. 일부 응답만 성공한 상태를 완성된 화면으로 게시하지 않는다. */
     private suspend fun refreshInternal() {
         val account = state.value.selected ?: error("계좌를 먼저 연결하세요.")
-        val portfolio = broker!!.portfolio(account)
-        val executions = broker!!.executions(account, LocalDate.now(SEOUL))
-        groups?.reconcile(account)
+        val sessionBroker = broker ?: error("계좌 연결 필요")
+        val portfolio = read { sessionBroker.portfolio(account) }
+        val executions = read { sessionBroker.executions(account, LocalDate.now(SEOUL)) }
+        read { groups?.reconcile(account) }
         val groupPositions =
             state.value.book.ledgerGroups().associate {
                 it.id to
@@ -332,7 +385,11 @@ class TradingController(
                         store.groupFills(),
                     )
             }
-        withContext(Dispatchers.IO) { store.snapshot(account, Environment.MOCK, portfolio) }
+        read {
+            withContext(ioDispatcher) {
+                store.snapshot(account, sessionBroker.environment, portfolio)
+            }
+        }
         change {
             it.copy(
                 portfolio = portfolio,
@@ -345,71 +402,95 @@ class TradingController(
     }
 
     /** 사용자 새로고침 요청. 네트워크 오류는 task 경계에서 안전한 앱 문구로 변환한다. */
-    fun refresh() = task {
-        refreshInternal()
-        log("잔고·주문체결 동기화 완료")
-    }
+    fun refresh() =
+        task("잔고 조회") {
+            check(state.value.connected)
+            refreshInternal()
+            log("잔고·주문체결 동기화 완료")
+        }
 
     /** 정지 상태의 시세 화면에서 요청한 한 종목만 조회한다. 자동매매나 타겟을 생성하지 않는다. */
-    fun refreshPrice(symbol: String) = task {
-        check(state.value.connected)
-        val allowed =
-            configuredSymbols() + state.value.portfolio?.holdings.orEmpty().map { it.symbol }
-        require(symbol in allowed)
-        if (!trackingSession(Instant.now())) {
-            log("시세 조회 시간은 평일 09:05–15:15입니다. 지난 시세는 주문에 사용하지 않습니다.")
-            return@task
+    fun refreshPrice(symbol: String) =
+        task("시세 조회") {
+            check(state.value.connected)
+            val allowed =
+                configuredSymbols() + state.value.portfolio?.holdings.orEmpty().map { it.symbol }
+            require(symbol in allowed)
+            if (!trackingSession(Instant.now())) {
+                log("시세 조회 시간은 평일 09:05–15:15입니다. 지난 시세는 주문에 사용하지 않습니다.")
+                return@task
+            }
+            val prices = monitor ?: error("시세 연결 필요")
+            read { prices.refresh(symbol) }
+            change { it.copy(quoteRoutes = prices.statuses()) }
+            log("$symbol 시세 조회 완료 · 자동매매는 정지 상태입니다.")
         }
-        val prices = monitor ?: error("시세 연결 필요")
-        prices.refresh(symbol)
-        change { it.copy(quoteRoutes = prices.statuses()) }
-        log("$symbol 시세 조회 완료 · 자동매매는 정지 상태입니다.")
-    }
 
     /** 계좌 전체의 증권사 손익을 조회한다. 앱의 특정 전략 성과와 구별해서 표시한다. */
-    fun refreshPnl() = task {
-        val account = state.value.selected ?: error("계좌 연결 필요")
-        val items = broker!!.dailyPnl(account)
-        change { it.copy(pnl = items) }
-        log("최근 30일 증권사 손익 조회 완료")
-    }
+    fun refreshPnl() =
+        task("손익 조회") {
+            check(state.value.connected)
+            val account = state.value.selected ?: error("계좌 연결 필요")
+            val items = read { broker!!.dailyPnl(account) }
+            require(items.map { it.date }.distinct().size == items.size)
+            change {
+                it.copy(pnl = items.sortedBy { row -> row.date }, pnlLoadedAt = Instant.now())
+            }
+            log("최근 30일 증권사 손익 조회 완료")
+        }
 
     /** 종목-기업 매핑을 검증하고 공식 데이터와 지표를 조합한다. 점수 계산은 매수 승인과 별개다. */
-    fun analyze(corpMapping: String, year: Int, reportCode: String) = task {
-        check(!state.value.running)
-        val repository = researchRepository ?: error("계좌를 먼저 연결하세요.")
-        val mapping =
-            corpMapping
-                .split(',', '\n')
-                .filter { it.isNotBlank() }
-                .associate { entry ->
-                    val parts = entry.trim().split(':')
-                    require(
-                        parts.size == 2 &&
-                            parts[0].matches(Regex("[0-9]{6}")) &&
-                            parts[1].matches(Regex("[0-9]{8}"))
-                    ) {
-                        "기업 매핑 형식: 종목코드:공시고유번호"
+    fun analyze(corpMapping: String, year: Int, reportCode: String) =
+        task("종목 분석") {
+            check(!state.value.running)
+            check(state.value.connected)
+            require(
+                year in 2000..LocalDate.now(SEOUL).year &&
+                    reportCode in setOf("11011", "11012", "11013", "11014")
+            )
+            val repository = researchRepository ?: error("계좌를 먼저 연결하세요.")
+            val mapping =
+                corpMapping
+                    .split(',', '\n')
+                    .filter { it.isNotBlank() }
+                    .associate { entry ->
+                        val parts = entry.trim().split(':')
+                        require(
+                            parts.size == 2 &&
+                                parts[0].matches(Regex("[0-9]{6}")) &&
+                                parts[1].matches(Regex("[0-9]{8}"))
+                        ) {
+                            "기업 매핑 형식: 종목코드:공시고유번호"
+                        }
+                        parts[0] to parts[1]
                     }
-                    parts[0] to parts[1]
-                }
-        val evidence = mutableListOf<ResearchEvidence>()
-        val candidates = mutableListOf<Candidate>()
-        for (symbol in configuredSymbols()) {
-            val item = repository.inspect(symbol, mapping[symbol], year, reportCode)
-            evidence += item
-            strategy.evaluate(symbol, item.prices!!.candles, LocalDate.now(SEOUL))?.let {
-                candidates += it
-            }
+            val evidence = mutableListOf<ResearchEvidence>()
+            val candidates = mutableListOf<Candidate>()
+            val symbols = configuredSymbols()
             change {
                 it.copy(
-                    research = evidence.toList(),
-                    candidates = candidates.sortedByDescending { c -> c.score },
+                    research = emptyList(),
+                    candidates = emptyList(),
+                    completedItems = 0,
+                    totalItems = symbols.size,
                 )
             }
+            for (symbol in symbols) {
+                val item = read { repository.inspect(symbol, mapping[symbol], year, reportCode) }
+                evidence += item
+                strategy.evaluate(symbol, item.prices!!.candles, LocalDate.now(SEOUL))?.let {
+                    candidates += it
+                }
+                change {
+                    it.copy(
+                        research = evidence.toList(),
+                        candidates = candidates.sortedByDescending { c -> c.score },
+                        completedItems = evidence.size,
+                    )
+                }
+            }
+            log("분석 완료 · 데이터 사용권한과 수정주가 검증 전 신규 매수는 차단됩니다.")
         }
-        log("분석 완료 · 데이터 사용권한과 수정주가 검증 전 신규 매수는 차단됩니다.")
-    }
 
     /** TradingService에서만 호출하는 세션 시작점. 매도 동의/매수 근거·미확인 주문을 검사한 뒤 반복 작업을 만든다. */
     fun startSession() {
@@ -479,6 +560,8 @@ class TradingController(
                         delay(1_000)
                     }
                     stop("자동매매 세션 종료")
+                } catch (_: TimeoutCancellationException) {
+                    stop("계좌 조회 시간 초과 · 자동매매 정지")
                 } catch (e: CancellationException) {
                     throw e
                 } catch (_: TrackingStorageException) {
@@ -493,8 +576,10 @@ class TradingController(
 
     /** 엔진 플래그를 먼저 내리고 반복 작업을 취소한다. 완료되기 전에는 데이터 삭제/재시작을 막는다. 기존 증권사 주문 취소는 아니다. */
     fun stop(reason: String = "사용자 요청으로 자동매매 정지") {
+        connectionId++
         engine?.stop()
-        val stopping = loop?.isCompleted == false
+        val stopping = loop?.isCompleted == false || actionJob?.isCompleted == false
+        actionJob?.cancel()
         loop?.cancel()
         socket?.close()
         resetTrackingView()
@@ -511,6 +596,20 @@ class TradingController(
             )
         }
         log(reason)
+    }
+
+    /** 읽기 요청 취소도 기존 연결을 종료한다. 늦은 응답이 연결 상태를 되살리지 못한다. */
+    fun cancelRequest() {
+        if (state.value.busy && !state.value.running) stop("요청 취소 · 계좌를 다시 연결하세요.")
+    }
+
+    /** 취소를 무시하는 어댑터라도 완료 후 세대 검사를 통과해야 결과를 반영한다. */
+    private suspend fun <T> read(block: suspend () -> T): T {
+        val owner = generation
+        val value = withTimeout(60_000) { block() }
+        currentCoroutineContext().ensureActive()
+        if (owner != generation) throw CancellationException("연결 변경")
+        return value
     }
 
     /** 사용자 확인 후 로컬 데이터를 지운다. 진행 중인 네트워크 결과가 삭제한 저널을 재생성하지 않도록 작업 종료를 확인한다. */
@@ -539,7 +638,7 @@ class TradingController(
     }
 
     /** 화면 액션의 직렬 진입 경계. 실행 중에는 반복 작업만 조회를 소유한다. 중복 클릭을 막고 busy를 복구하며 취소는 호출자에게 전파한다. */
-    private fun task(block: suspend () -> Unit) {
+    private fun task(label: String, block: suspend () -> Unit) {
         if (
             state.value.running ||
                 state.value.busy ||
@@ -547,17 +646,48 @@ class TradingController(
                 (!state.value.running && loop?.isCompleted == false)
         )
             return
-        scope.launch {
-            change { it.copy(busy = true) }
-            try {
-                block()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                log("요청 실패 · 네트워크·입력값·API 신청 상태를 확인하세요. 주문은 재시도하지 않습니다.", "ERROR")
-            } finally {
-                change { it.copy(busy = !it.running && loop?.isCompleted == false) }
+        // launch 전에 잠근다. dispatcher가 즉시 실행하지 않아도 연속 탭으로 두 요청을 만들지 않는다.
+        change {
+            it.copy(
+                busy = true,
+                operation = label,
+                messageError = false,
+                completedItems = 0,
+                totalItems = 0,
+            )
+        }
+        val job =
+            scope.launch(start = CoroutineStart.LAZY) {
+                try {
+                    block()
+                } catch (_: TimeoutCancellationException) {
+                    log("조회 시간 초과 · 연결 상태를 확인한 뒤 다시 조회하세요.", "ERROR")
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: TrackingStorageException) {
+                    stop("추적 이력 저장 실패 · 자동매매 정지")
+                    change { it.copy(storageError = true) }
+                } catch (_: Exception) {
+                    log("$label 실패 · 네트워크·입력값·API 신청 상태를 확인하세요. 주문은 재시도하지 않습니다.", "ERROR")
+                } finally {
+                    if (!state.value.connected) {
+                        connectionId++
+                        socket?.close()
+                    }
+                }
+            }
+        actionJob = job
+        // 시작 전에 취소된 LAZY 작업도 finally에 의존하지 않고 로딩 표시를 해제한다.
+        job.invokeOnCompletion {
+            scope.launch {
+                if (actionJob === job) {
+                    actionJob = null
+                    change {
+                        it.copy(busy = !it.running && loop?.isCompleted == false, operation = null)
+                    }
+                }
             }
         }
+        job.start()
     }
 }

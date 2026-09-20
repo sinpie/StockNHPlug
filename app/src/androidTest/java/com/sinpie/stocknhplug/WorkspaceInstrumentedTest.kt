@@ -97,12 +97,12 @@ class WorkspaceInstrumentedTest {
                 .asAndroidBitmap()
                 .compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
         }
-        compose.onNodeWithText("005930 시세 조회").performScrollTo().performClick()
+        compose.onNodeWithText("005930 조회").performScrollTo().performClick()
         compose.runOnIdle { assertEquals("005930", selected) }
         compose.onNodeWithText("종목코드·종목명·그룹 검색").performScrollTo().performTextReplacement("없는 그룹")
         compose.onNodeWithText("검색 결과가 없습니다.").assertIsDisplayed()
         compose.onNodeWithText("종목코드·종목명·그룹 검색").performTextReplacement("균형")
-        compose.onNodeWithText("005930 시세 조회").assertExists()
+        compose.onNodeWithText("005930 조회").assertExists()
     }
 
     @Test
@@ -141,11 +141,11 @@ class WorkspaceInstrumentedTest {
                 }
             }
         }
-        compose.onNodeWithText("005930 · 매수").assertIsDisplayed()
+        compose.onNodeWithText("005930 · 매수").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("000660 · 매수").assertDoesNotExist()
-        compose.onNodeWithText("모든 계좌 주문 보기").performClick()
+        compose.onNodeWithText("전체 계좌").performScrollTo().performClick()
         compose.onNodeWithText("000660 · 매수").assertExists()
-        compose.onNodeWithText("증권사 체결").performClick()
+        compose.onNodeWithText("체결").performScrollTo().performClick()
         compose.onNodeWithText("조회된 체결 내역이 없습니다.").assertIsDisplayed()
     }
 }

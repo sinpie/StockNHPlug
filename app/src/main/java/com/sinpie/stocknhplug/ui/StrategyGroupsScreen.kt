@@ -35,10 +35,18 @@ fun StrategyGroupsScreen(
     var editGroup by remember { mutableStateOf<StrategyGroup?>(null) }
     var adding by remember { mutableStateOf(false) }
     var risk by remember { mutableStateOf(false) }
+    var pendingBook by remember { mutableStateOf<StrategyBook?>(null) }
+    LaunchedEffect(s.book, pendingBook) {
+        if (pendingBook != null && s.book == pendingBook) {
+            editGroup = null
+            adding = false
+            pendingBook = null
+        }
+    }
     val editable = !s.running && !s.busy
     val plan = s.book.plans.find { it.id == selected }
     if (plan == null) {
-        Text("전략과 그룹", fontSize = 28.sp, fontWeight = FontWeight.Bold)
+        Text("전략 관리", fontSize = 28.sp, fontWeight = FontWeight.Bold)
         Text("같은 종목도 그룹마다 독립적으로 관리하세요.", color = GroupMuted)
         GCard {
             Text(
@@ -108,7 +116,7 @@ fun StrategyGroupsScreen(
         ) {
             Text("+ 전략 추가")
         }
-        TextButton({ risk = !risk }) { Text(if (risk) "계좌 공통 한도 접기" else "계좌 공통 위험 한도") }
+        TextButton({ risk = !risk }) { Text(if (risk) "한도 접기" else "위험 한도") }
         if (risk) riskSettings()
     } else {
         TextButton({
@@ -264,21 +272,26 @@ fun StrategyGroupsScreen(
             title = { Text("추가할 전략") },
             text = {
                 Column {
+                    if (s.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+                    if (pendingBook != null && s.messageError) Text(s.message, color = Red)
                     s.groupAlgorithms.forEach { (id, name) ->
-                        TextButton({
-                            save(
-                                s.book.copy(
-                                    plans =
-                                        s.book.plans +
-                                            StrategyPlan(
-                                                name =
-                                                    "$name ${s.book.plans.count { it.algorithmId == id } + 1}",
-                                                algorithmId = id,
-                                            )
-                                )
-                            )
-                            adding = false
-                        }) {
+                        TextButton(
+                            {
+                                val next =
+                                    s.book.copy(
+                                        plans =
+                                            s.book.plans +
+                                                StrategyPlan(
+                                                    name =
+                                                        "$name ${s.book.plans.count { it.algorithmId == id } + 1}",
+                                                    algorithmId = id,
+                                                )
+                                    )
+                                pendingBook = next
+                                save(next)
+                            },
+                            enabled = editable,
+                        ) {
                             Text(name)
                         }
                     }
@@ -291,11 +304,13 @@ fun StrategyGroupsScreen(
             group,
             s.book.plans.single { it.id == group.strategyId }.algorithmId,
             { editGroup = null },
+            s.busy,
+            if (pendingBook != null && s.messageError) s.message else "",
         ) { edited ->
             val next = s.book.copy(groups = s.book.groups.filterNot { it.id == edited.id } + edited)
             next.validate()
+            pendingBook = next
             save(next)
-            editGroup = null
         }
     }
 }
@@ -305,6 +320,7 @@ private fun GCard(content: @Composable ColumnScope.() -> Unit) {
     Surface(
         shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, Line),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(
@@ -484,6 +500,8 @@ private fun GroupEditor(
     initial: StrategyGroup,
     algorithm: String,
     close: () -> Unit,
+    busy: Boolean,
+    saveError: String,
     save: (StrategyGroup) -> Unit,
 ) {
     var draft by remember { mutableStateOf(initial) }
@@ -505,147 +523,167 @@ private fun GroupEditor(
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
                     )
-                    Button({
-                        runCatching { save(draft) }.onFailure { error = "종목·비중 합계·예산·조건값을 확인하세요." }
-                    }) {
+                    Button(
+                        {
+                            runCatching { save(draft) }
+                                .onFailure { error = "종목·비중 합계·예산·조건값을 확인하세요." }
+                        },
+                        enabled = !busy,
+                    ) {
                         Text("저장")
                     }
                 }
-                Column(
-                    Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error)
-                    GCard {
-                        OutlinedTextField(
-                            draft.name,
-                            { draft = draft.copy(name = it) },
-                            label = { Text("그룹 이름") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        Toggle("그룹 사용", draft.enabled) { draft = draft.copy(enabled = it) }
-                        Text("전략도 켜져 있어야 실행 대상이 됩니다.", fontSize = 12.sp, color = GroupMuted)
-                    }
-                    GCard {
-                        Text(
-                            "그룹 종목 · 비중 합계 ${draft.symbols.sumOf { it.weightPercent }}%",
-                            fontWeight = FontWeight.Bold,
-                        )
-                        draft.symbols.forEachIndexed { index, item ->
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                OutlinedTextField(
-                                    item.symbol,
-                                    { v ->
-                                        draft =
-                                            draft.copy(
-                                                symbols =
-                                                    draft.symbols.mapIndexed { i, x ->
-                                                        if (i == index) x.copy(symbol = v) else x
-                                                    }
-                                            )
-                                    },
-                                    Modifier.weight(1f),
-                                    label = { Text("6자리 종목코드") },
-                                    singleLine = true,
-                                )
-                                OutlinedTextField(
-                                    item.weightPercent.toString(),
-                                    { v ->
-                                        draft =
-                                            draft.copy(
-                                                symbols =
-                                                    draft.symbols.mapIndexed { i, x ->
-                                                        if (i == index)
-                                                            x.copy(
-                                                                weightPercent = v.toIntOrNull() ?: 0
-                                                            )
-                                                        else x
-                                                    }
-                                            )
-                                    },
-                                    Modifier.width(80.dp),
-                                    label = { Text("비중 %") },
-                                    singleLine = true,
-                                )
-                            }
-                            TextButton({
-                                draft =
-                                    draft.copy(
-                                        symbols = draft.symbols.filterIndexed { i, _ -> i != index }
-                                    )
-                            }) {
-                                Text("종목 제거")
-                            }
-                        }
-                        OutlinedButton(
-                            {
-                                draft =
-                                    draft.copy(
-                                        symbols =
-                                            draft.symbols +
-                                                GroupSymbol(
-                                                    "",
-                                                    (100 - draft.symbols.sumOf { it.weightPercent })
-                                                        .coerceAtLeast(1),
-                                                )
-                                    )
-                            },
-                            enabled = draft.symbols.size < 10,
-                        ) {
-                            Text("+ 종목 추가")
-                        }
-                        Text(
-                            "다른 그룹과 같은 종목을 넣을 수 있습니다. 비중 합계는 100% 이하이며 나머지는 현금입니다.",
-                            fontSize = 12.sp,
-                            color = GroupMuted,
-                        )
-                    }
-                    GCard {
-                        Text("그룹 자금 한도", fontWeight = FontWeight.Bold)
-                        NumberField("그룹 자본 (원)", draft.capital) {
-                            draft = draft.copy(capital = it.toLong())
-                        }
-                        NumberField("한 번에 매수/매도할 예산 (원)", draft.orderBudget) {
-                            draft = draft.copy(orderBudget = it.toLong())
-                        }
-                        NumberField("하루 매수 한도 (원)", draft.dailyBudget) {
-                            draft = draft.copy(dailyBudget = it.toLong())
-                        }
-                        if (algorithm == "averaging") {
-                            NumberField("그룹 평균가 대비 추가매수 하락률 %", draft.dropPercent) {
-                                draft = draft.copy(dropPercent = it)
-                            }
-                            NumberField("최대 추가매수 횟수 (0~20)", draft.maxAdditionalBuys) {
-                                draft = draft.copy(maxAdditionalBuys = it.toInt())
-                            }
-                            NumberField("그룹 목표 수익률 %", draft.takeProfitPercent) {
-                                draft = draft.copy(takeProfitPercent = it)
-                            }
-                        } else if (algorithm == "rebalance")
-                            NumberField("목표 비중 허용 오차 %p", draft.rebalanceBand) {
-                                draft = draft.copy(rebalanceBand = it)
-                            }
-                    }
-                    GCard {
-                        Text("그룹 정기매수", fontWeight = FontWeight.Bold)
-                        listOf(
-                                ScheduleOverride.INHERIT to "전략 설정 따르기",
-                                ScheduleOverride.OFF to "이 그룹은 끄기",
-                                ScheduleOverride.CUSTOM to "별도 설정",
+                if (busy) {
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                    Text("그룹 저장 중", Modifier.padding(20.dp), color = Muted)
+                } else
+                    Column(
+                        Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        if (saveError.isNotBlank())
+                            Text(saveError, color = MaterialTheme.colorScheme.error)
+                        if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error)
+                        GCard {
+                            OutlinedTextField(
+                                draft.name,
+                                { draft = draft.copy(name = it) },
+                                label = { Text("그룹 이름") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
                             )
-                            .forEach { (mode, label) ->
-                                FilterChip(
-                                    draft.scheduleOverride == mode,
-                                    { draft = draft.copy(scheduleOverride = mode) },
-                                    label = { Text(label) },
-                                )
+                            Toggle("그룹 사용", draft.enabled) { draft = draft.copy(enabled = it) }
+                            Text("전략도 켜져 있어야 실행 대상이 됩니다.", fontSize = 12.sp, color = GroupMuted)
+                        }
+                        GCard {
+                            Text(
+                                "그룹 종목 · 비중 합계 ${draft.symbols.sumOf { it.weightPercent }}%",
+                                fontWeight = FontWeight.Bold,
+                            )
+                            draft.symbols.forEachIndexed { index, item ->
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedTextField(
+                                        item.symbol,
+                                        { v ->
+                                            draft =
+                                                draft.copy(
+                                                    symbols =
+                                                        draft.symbols.mapIndexed { i, x ->
+                                                            if (i == index) x.copy(symbol = v)
+                                                            else x
+                                                        }
+                                                )
+                                        },
+                                        Modifier.weight(1f),
+                                        label = { Text("6자리 종목코드") },
+                                        singleLine = true,
+                                    )
+                                    OutlinedTextField(
+                                        item.weightPercent.toString(),
+                                        { v ->
+                                            draft =
+                                                draft.copy(
+                                                    symbols =
+                                                        draft.symbols.mapIndexed { i, x ->
+                                                            if (i == index)
+                                                                x.copy(
+                                                                    weightPercent =
+                                                                        v.toIntOrNull() ?: 0
+                                                                )
+                                                            else x
+                                                        }
+                                                )
+                                        },
+                                        Modifier.width(80.dp),
+                                        label = { Text("비중 %") },
+                                        singleLine = true,
+                                    )
+                                }
+                                TextButton({
+                                    draft =
+                                        draft.copy(
+                                            symbols =
+                                                draft.symbols.filterIndexed { i, _ -> i != index }
+                                        )
+                                }) {
+                                    Text("종목 제거")
+                                }
                             }
+                            OutlinedButton(
+                                {
+                                    draft =
+                                        draft.copy(
+                                            symbols =
+                                                draft.symbols +
+                                                    GroupSymbol(
+                                                        "",
+                                                        (100 -
+                                                                draft.symbols.sumOf {
+                                                                    it.weightPercent
+                                                                })
+                                                            .coerceAtLeast(1),
+                                                    )
+                                        )
+                                },
+                                enabled = draft.symbols.size < 10,
+                            ) {
+                                Text("+ 종목 추가")
+                            }
+                            Text(
+                                "다른 그룹과 같은 종목을 넣을 수 있습니다. 비중 합계는 100% 이하이며 나머지는 현금입니다.",
+                                fontSize = 12.sp,
+                                color = GroupMuted,
+                            )
+                        }
+                        GCard {
+                            Text("그룹 자금 한도", fontWeight = FontWeight.Bold)
+                            NumberField("그룹 자본 (원)", draft.capital) {
+                                draft = draft.copy(capital = it.toLong())
+                            }
+                            NumberField("한 번에 매수/매도할 예산 (원)", draft.orderBudget) {
+                                draft = draft.copy(orderBudget = it.toLong())
+                            }
+                            NumberField("하루 매수 한도 (원)", draft.dailyBudget) {
+                                draft = draft.copy(dailyBudget = it.toLong())
+                            }
+                            if (algorithm == "averaging") {
+                                NumberField("그룹 평균가 대비 추가매수 하락률 %", draft.dropPercent) {
+                                    draft = draft.copy(dropPercent = it)
+                                }
+                                NumberField("최대 추가매수 횟수 (0~20)", draft.maxAdditionalBuys) {
+                                    draft = draft.copy(maxAdditionalBuys = it.toInt())
+                                }
+                                NumberField("그룹 목표 수익률 %", draft.takeProfitPercent) {
+                                    draft = draft.copy(takeProfitPercent = it)
+                                }
+                            } else if (algorithm == "rebalance")
+                                NumberField("목표 비중 허용 오차 %p", draft.rebalanceBand) {
+                                    draft = draft.copy(rebalanceBand = it)
+                                }
+                        }
+                        GCard {
+                            Text("그룹 정기매수", fontWeight = FontWeight.Bold)
+                            listOf(
+                                    ScheduleOverride.INHERIT to "전략 설정 따르기",
+                                    ScheduleOverride.OFF to "이 그룹은 끄기",
+                                    ScheduleOverride.CUSTOM to "별도 설정",
+                                )
+                                .forEach { (mode, label) ->
+                                    FilterChip(
+                                        draft.scheduleOverride == mode,
+                                        { draft = draft.copy(scheduleOverride = mode) },
+                                        label = { Text(label) },
+                                    )
+                                }
+                        }
+                        if (draft.scheduleOverride == ScheduleOverride.CUSTOM)
+                            ScheduleEditor(
+                                draft.schedule,
+                                { draft = draft.copy(schedule = it) },
+                                true,
+                            )
+                        Spacer(Modifier.height(16.dp))
                     }
-                    if (draft.scheduleOverride == ScheduleOverride.CUSTOM)
-                        ScheduleEditor(draft.schedule, { draft = draft.copy(schedule = it) }, true)
-                    Spacer(Modifier.height(16.dp))
-                }
             }
         }
     }

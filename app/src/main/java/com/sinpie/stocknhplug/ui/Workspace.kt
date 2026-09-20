@@ -21,7 +21,7 @@ import kotlinx.coroutines.delay
 /** 정보 구조의 최상위: 현황 / 설정 / 판단 근거 / 자산 / 실행 결과. 아이콘 설명은 텍스트와 중복하지 않는다. */
 @Composable
 fun WorkspaceNavigation(selected: Int, select: (Int) -> Unit) {
-    val titles = listOf("홈", "자동매매", "시세·분석", "자산", "활동")
+    val titles = listOf("홈", "전략", "시세", "자산", "내역")
     val icons =
         listOf(
             Icons.Outlined.Dashboard,
@@ -30,7 +30,7 @@ fun WorkspaceNavigation(selected: Int, select: (Int) -> Unit) {
             Icons.Outlined.PieChart,
             Icons.Outlined.History,
         )
-    NavigationBar {
+    NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
         titles.forEachIndexed { i, title ->
             NavigationBarItem(
                 selected == i,
@@ -44,14 +44,18 @@ fun WorkspaceNavigation(selected: Int, select: (Int) -> Unit) {
 
 /** 마지막 응답을 긴 목록 아래에 숨기지 않는다. 펼침 상태는 새 메시지마다 초기화한다. */
 @Composable
-internal fun StatusBanner(message: String) {
+internal fun StatusBanner(message: String, error: Boolean = false) {
     var expanded by remember(message) { mutableStateOf(false) }
-    Surface(color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
+    Surface(
+        color = if (error) Red.copy(alpha = .06f) else MaterialTheme.colorScheme.background,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) {
             Text(
                 message,
                 fontSize = 12.sp,
-                maxLines = if (expanded) Int.MAX_VALUE else 2,
+                color = if (error) Red else Muted,
+                maxLines = if (expanded) Int.MAX_VALUE else 1,
                 overflow = TextOverflow.Ellipsis,
             )
             if (message.length > 50)
@@ -74,13 +78,25 @@ internal fun rememberDisplayTime(): Instant {
 }
 
 @Composable
-private fun SectionTabs(labels: List<String>, selected: Int, select: (Int) -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+internal fun SectionTabs(labels: List<String>, selected: Int, select: (Int) -> Unit) {
+    TabRow(
+        selectedTabIndex = selected,
+        containerColor = MaterialTheme.colorScheme.background,
+        divider = {},
     ) {
         labels.forEachIndexed { i, label ->
-            FilterChip(selected == i, { select(i) }, label = { Text(label) })
+            Tab(
+                selected == i,
+                { select(i) },
+                text = {
+                    Text(
+                        label,
+                        fontWeight = if (selected == i) FontWeight.Bold else FontWeight.Normal,
+                    )
+                },
+                selectedContentColor = Teal,
+                unselectedContentColor = Muted,
+            )
         }
     }
 }
@@ -93,8 +109,8 @@ fun MarketWorkspace(
     refresh: (String) -> Unit,
 ) {
     var section by rememberSaveable { mutableIntStateOf(0) }
-    Heading("시세와 매수 근거", "가격 → 타겟 추적 → 매수 근거 순서로 확인하세요.")
-    SectionTabs(listOf("시세·타겟", "매수 근거"), section) { section = it }
+    Heading("관심종목", "현재가와 매매 타겟, 분석 근거를 확인하세요.")
+    SectionTabs(listOf("현재가", "분석"), section) { section = it }
     if (section == 1) ResearchScreen(s, analyze) else PriceTrackingScreen(s, refresh)
 }
 
@@ -158,7 +174,7 @@ fun PriceTrackingScreen(s: AppState, refresh: (String) -> Unit) {
             }
             Text(won(quote?.price), fontSize = 24.sp, fontWeight = FontWeight.Bold)
             if (quote != null) {
-                Text("매수호가 ${won(quote.bid)} · 매도호가 ${won(quote.ask)}", fontSize = 12.sp)
+                QuoteBook(quote)
                 Text(
                     "거래소 ${time(quote.exchangeAt)} · ${if (quote.regular) "정규장" else "장 상태 확인 필요"}",
                     fontSize = 11.sp,
@@ -176,7 +192,7 @@ fun PriceTrackingScreen(s: AppState, refresh: (String) -> Unit) {
                     { refresh(symbol) },
                     enabled = s.connected && !s.busy && !s.storageError,
                 ) {
-                    Text("$symbol 시세 조회")
+                    Text("$symbol 조회")
                 }
             if (targets.isEmpty()) Text("등록된 매매 타겟 없음", color = Muted, fontSize = 12.sp)
             targets.forEach { target ->
@@ -213,7 +229,7 @@ fun PriceTrackingScreen(s: AppState, refresh: (String) -> Unit) {
 fun AssetsWorkspace(s: AppState, refresh: () -> Unit, pnl: () -> Unit) {
     var section by rememberSaveable { mutableIntStateOf(0) }
     Heading("자산", "${s.selected?.masked ?: "계좌 연결 전"} · 보유 현황과 계좌 손익")
-    SectionTabs(listOf("보유종목", "손익", "보유 이력"), section) { section = it }
+    SectionTabs(listOf("잔고", "손익", "이력"), section) { section = it }
     when (section) {
         0 -> HoldingsScreen(s, refresh)
         1 -> HistoryScreen(s, pnl, 2)
@@ -225,11 +241,13 @@ fun AssetsWorkspace(s: AppState, refresh: () -> Unit, pnl: () -> Unit) {
 fun ActivityWorkspace(s: AppState) {
     var section by rememberSaveable { mutableIntStateOf(0) }
     var allAccounts by rememberSaveable { mutableStateOf(false) }
-    Heading("활동", "앱 주문, 증권사 체결, 실행 로그를 구분합니다.")
-    SectionTabs(listOf("앱 주문", "증권사 체결", "실행 로그"), section) { section = it }
+    var filter by rememberSaveable { mutableIntStateOf(0) }
+    var query by rememberSaveable { mutableStateOf("") }
+    Heading("거래 내역", "주문 접수와 실제 체결을 구분해 확인하세요.")
+    SectionTabs(listOf("주문", "체결", "로그"), section) { section = it }
     if (section == 0) {
         if (s.selected != null)
-            FilterChip(allAccounts, { allAccounts = !allAccounts }, label = { Text("모든 계좌 주문 보기") })
+            FilterChip(allAccounts, { allAccounts = !allAccounts }, label = { Text("전체 계좌") })
         val account = s.selected
         val rows =
             if (allAccounts || account == null) s.orders
@@ -245,6 +263,33 @@ fun ActivityWorkspace(s: AppState) {
             color = Muted,
             fontSize = 12.sp,
         )
-        HistoryScreen(s.copy(orders = rows), {}, 0)
+        Row(
+            Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            listOf("전체", "확인 필요", "접수", "거절").forEachIndexed { i, label ->
+                FilterChip(filter == i, { filter = i }, label = { Text(label) })
+            }
+        }
+        OutlinedTextField(
+            query,
+            { query = it.take(40) },
+            Modifier.fillMaxWidth(),
+            singleLine = true,
+            label = { Text("주문 종목 검색") },
+        )
+        val filtered =
+            rows.filter { row ->
+                (query.isBlank() || row.intent.symbol.contains(query.trim())) &&
+                    when (filter) {
+                        1 -> row.status in setOf(OrderStatus.UNKNOWN, OrderStatus.SUBMITTING)
+                        2 -> row.status == OrderStatus.ACCEPTED
+                        3 -> row.status == OrderStatus.REJECTED
+                        else -> true
+                    }
+            }
+        Text("${filtered.size}건 · 접수는 체결 완료가 아닙니다.", fontSize = 11.sp, color = Muted)
+        if (rows.isNotEmpty() && filtered.isEmpty()) Panel { Text("조건에 맞는 주문이 없습니다.") }
+        else HistoryScreen(s.copy(orders = filtered), {}, 0)
     } else if (section == 1) HistoryScreen(s, {}, 1) else LogsScreen(s)
 }

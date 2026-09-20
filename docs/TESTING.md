@@ -55,3 +55,12 @@
 - `LocalStoreInstrumentedTest`, `TrackingOptionsUiTest`: disposable Android 설치에서 실제 암호화 저장/복원·기존 설정 기본 ON 이관·OFF 유지·스위치 조작·실행 중 편집 잠금.
 
 Android 테스트는 실사용 설치에서 실행하지 않는다. 실제 실행 결과와 건수는 [VERIFICATION.md](VERIFICATION.md)를 확인한다. 10초는 예약 간격 검증이며 OS/통신 지연까지 포함한 수신 보장 테스트가 아니다.
+# 요청 24 회귀 검증
+
+- `ControllerAsyncTest`: 지연 dispatcher에서 연속 탭 하나만 입장, 시작 전 취소, 비협력 제공자의 정지 후 계좌/잔고 응답, 이전 세션 콜백, 부분 조회 실패, timeout, 빈 손익/미조회 구분 및 키 교체 후 계좌 메타데이터 초기화.
+- `AccountAnalyticsTest`: 보고 손익 기반 수익률, 주식 내 비중, 원가 0/분모 0 미제공, 큰 금액 오버플로 회피, 역전/미제공 호가 스프레드 차단.
+- `HybridMonitorTest`: clear 이후 REST 응답으로 시세·추적 상태가 되살아나지 않음.
+- `FinancialUiTest`, `SettingsUiTest`: 비중/수익률 정렬, 자동운용 중 조회 비활성, 계좌/시세/보안 탭, 저장 실패 초안 유지/성공 확인 후 닫힘.
+- `UiInstrumentedTest`, `WorkspaceInstrumentedTest`: 새 메뉴명, 페이지 복귀 시 선택 탭, 계좌/주문 필터, 타겟 분리와 지연 시세 표시.
+
+화면 자료는 연결 전 UI 또는 명시적인 합성 계좌/시세만 사용한다. 기본/130% 글꼴 확대 검증은 별도 UI 실행으로 수행하며 실제 결과만 VERIFICATION.md에 기록한다.

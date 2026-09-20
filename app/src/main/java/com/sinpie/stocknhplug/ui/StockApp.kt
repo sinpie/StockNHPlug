@@ -9,6 +9,7 @@ import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.*
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -23,11 +24,12 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlinx.coroutines.launch
 
-internal val Teal = Color(0xFF087F70)
-internal val Ink = Color(0xFF172A35)
-internal val Muted = Color(0xFF596D78)
-internal val Red = Color(0xFFB73E42)
-internal val Blue = Color(0xFF2464BC)
+internal val Teal = Color(0xFF175CD3)
+internal val Ink = Color(0xFF14213D)
+internal val Muted = Color(0xFF667085)
+internal val Red = Color(0xFFC43242)
+internal val Blue = Color(0xFF2563EB)
+internal val Line = Color(0xFFE4E9F2)
 
 internal fun won(value: Long?) =
     value?.let { NumberFormat.getNumberInstance(Locale.KOREA).format(it) + "원" } ?: "—"
@@ -43,14 +45,14 @@ fun StockTheme(content: @Composable () -> Unit) {
             lightColorScheme(
                 primary = Teal,
                 onPrimary = Color.White,
-                background = Color(0xFFF4F7F8),
+                background = Color(0xFFF5F7FB),
                 surface = Color.White,
                 onSurface = Ink,
                 onBackground = Ink,
                 secondary = Teal,
-                secondaryContainer = Color(0xFFDFF1EC),
+                secondaryContainer = Color(0xFFEAF1FF),
                 onSecondaryContainer = Ink,
-                surfaceVariant = Color(0xFFEAF0F2),
+                surfaceVariant = Color(0xFFEDF1F7),
                 onSurfaceVariant = Muted,
             ),
         content = content,
@@ -92,6 +94,7 @@ fun StockApp(controller: TradingController, start: () -> Unit, stop: () -> Unit)
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var settings by remember { mutableStateOf(false) }
     var confirm by remember { mutableStateOf(false) }
+    val pageState = rememberSaveableStateHolder()
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
@@ -104,19 +107,33 @@ fun StockApp(controller: TradingController, start: () -> Unit, stop: () -> Unit)
                 Icon(Icons.Outlined.ShowChart, null, tint = Teal, modifier = Modifier.size(28.dp))
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("StockNHPlug", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                    Text("나의 투자 자동화 워크스페이스", fontSize = 11.sp, color = Muted)
+                    Text("StockNHPlug", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Text("자동투자", fontSize = 11.sp, color = Muted)
                 }
-                Badge("모의투자", Teal)
+                Badge(if (state.running) "운용 중" else "모의", Teal)
                 IconButton({ settings = true }) { Icon(Icons.Outlined.Settings, "보안 및 연결 설정") }
             }
         },
         bottomBar = { WorkspaceNavigation(tab) { tab = it } },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
-            if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth(), color = Teal)
-            StatusBanner(state.message)
-            key(tab) {
+            if (state.busy) {
+                LinearProgressIndicator(Modifier.fillMaxWidth(), color = Teal)
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "${state.operation ?: "정리 중"}${if (state.totalItems > 0) " · ${state.completedItems}/${state.totalItems}" else ""}",
+                        Modifier.weight(1f),
+                        fontSize = 12.sp,
+                    )
+                    if (state.operation != null && !state.running)
+                        TextButton(controller::cancelRequest) { Text("취소") }
+                }
+            }
+            StatusBanner(state.message, state.messageError || state.storageError)
+            pageState.SaveableStateProvider(tab) {
                 val contentScroll = rememberScrollState()
                 val uiScope = rememberCoroutineScope()
                 Column(
@@ -198,12 +215,13 @@ internal fun Badge(text: String, color: Color = Teal) {
 @Composable
 internal fun Panel(title: String? = null, content: @Composable ColumnScope.() -> Unit) {
     Surface(
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(16.dp),
         color = Color.White,
+        border = BorderStroke(1.dp, Line),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (title != null) Text(title, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            if (title != null) Text(title, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
             content()
         }
     }
@@ -212,7 +230,7 @@ internal fun Panel(title: String? = null, content: @Composable ColumnScope.() ->
 @Composable
 internal fun Heading(title: String, subtitle: String) {
     Column {
-        Text(title, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+        Text(title, fontSize = 24.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(5.dp))
         Text(subtitle, color = Muted, fontSize = 13.sp, lineHeight = 20.sp)
     }
@@ -250,18 +268,18 @@ private fun Dashboard(
 ) {
     val now = rememberDisplayTime()
     Heading(
-        "투자의 흐름을 한눈에",
+        "계좌 현황",
         LocalDate.now(SEOUL)
             .format(DateTimeFormatter.ofPattern("yyyy년 M월 d일 · EEEE", Locale.KOREAN)),
     )
-    Surface(color = Ink, shape = RoundedCornerShape(24.dp)) {
+    Surface(color = Ink, shape = RoundedCornerShape(20.dp)) {
         Column(
             Modifier.fillMaxWidth().padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("모의계좌 순자산", color = Color(0xFFBCD4D8), modifier = Modifier.weight(1f))
-                Badge(s.selected?.masked ?: "연결 전", Color(0xFF91DECB))
+                Text("총자산", color = Color(0xFFB8C8E4), modifier = Modifier.weight(1f))
+                Badge(s.selected?.masked ?: "연결 전", Color(0xFFBDDAFF))
             }
             Text(
                 won(s.portfolio?.equity),
@@ -272,7 +290,13 @@ private fun Dashboard(
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Column {
                     Text("평가손익", color = Color(0xFFBCD4D8), fontSize = 12.sp)
-                    Text(won(s.portfolio?.unrealized), color = Color(0xFF91DECB), fontSize = 20.sp)
+                    Text(
+                        won(s.portfolio?.unrealized),
+                        color =
+                            if ((s.portfolio?.unrealized ?: 0) < 0) Color(0xFFAACBFF)
+                            else Color(0xFFFFB8BF),
+                        fontSize = 20.sp,
+                    )
                 }
                 Column {
                     Text("예수금", color = Color(0xFFBCD4D8), fontSize = 12.sp)
@@ -290,7 +314,7 @@ private fun Dashboard(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Outlined.Bolt, null, tint = Teal)
             Spacer(Modifier.width(8.dp))
-            Text("자동매매", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            Text("자동운용", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             Badge(if (s.running) "실행 중" else "정지", if (s.running) Teal else Muted)
         }
         Text(
@@ -316,23 +340,42 @@ private fun Dashboard(
         }
     }
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        OutlinedButton(connect, Modifier.weight(1f), enabled = !s.running) { Text("계좌 연결") }
-        OutlinedButton(refresh, Modifier.weight(1f), enabled = s.connected && !s.busy) {
-            Text("잔고 새로고침")
+        OutlinedButton(connect, Modifier.weight(1f), enabled = !s.running && !s.busy) {
+            Text("계좌 연결")
+        }
+        OutlinedButton(
+            refresh,
+            Modifier.weight(1f),
+            enabled = s.connected && !s.busy && !s.running,
+        ) {
+            Text("잔고 갱신")
         }
     }
-    Panel("오늘의 투자 체크") {
+    Panel("운용 준비") {
         CheckLine("계좌 연결", s.connected, "NHPlug 모의투자")
         CheckLine("그룹 체결 대사", s.groupExecutionReady, "주문번호 연결 검증 전 자동주문 잠금")
         CheckLine("실시간 가격", s.quotes.values.any { it.fresh(now) }, "오래된 시세는 주문에 사용하지 않음")
         CheckLine(
             "매수 데이터 검증",
-            s.research.any { it.buyBlockers(Instant.now()).isEmpty() },
+            s.research.isNotEmpty() &&
+                s.book
+                    .ledgerGroups()
+                    .flatMap { it.symbols }
+                    .map { it.symbol }
+                    .distinct()
+                    .let { symbols ->
+                        symbols.isNotEmpty() &&
+                            symbols.all { symbol ->
+                                s.research.any {
+                                    it.symbol == symbol && it.buyBlockers(now).isEmpty()
+                                }
+                            }
+                    },
             "수정주가 · 재무 · 공시 · 뉴스",
         )
     }
-    Panel("전략 점수 상위 종목") {
-        if (s.candidates.isEmpty()) Empty(Icons.Outlined.Analytics, "시세·분석의 매수 근거에서 분석을 시작하세요.")
+    Panel("분석 요약") {
+        if (s.candidates.isEmpty()) Empty(Icons.Outlined.Analytics, "시세의 분석 탭에서 종목을 분석하세요.")
         else
             s.candidates.take(3).forEach { c ->
                 Row {
@@ -373,12 +416,12 @@ private fun StrategyScreen(s: AppState, save: (Strategy) -> Unit) {
     var session by remember(s.settings) { mutableStateOf(s.settings.maxSessionLoss.toString()) }
     var manage by remember(s.settings) { mutableStateOf(s.settings.manageHoldings) }
     var error by remember { mutableStateOf("") }
-    Heading("계좌 공통 위험 한도", "모든 전략·그룹을 합쳐 최종 검사합니다.")
+    Heading("위험 한도", "모든 전략·그룹을 합쳐 최종 검사합니다.")
     Panel("투자 한도") {
-        Field("계좌 전체 주문당 상한 (원)", order, { order = it }, !s.running, true)
-        Field("계좌 전체 하루 매수 상한 (원)", daily, { daily = it }, !s.running, true)
-        Field("계좌 전체 최대 보유 종목 수", count, { count = it }, !s.running, true)
-        Field("세션 손실 한도 (원)", session, { session = it }, !s.running, true)
+        Field("계좌 전체 주문당 상한 (원)", order, { order = it }, !s.running && !s.busy, true)
+        Field("계좌 전체 하루 매수 상한 (원)", daily, { daily = it }, !s.running && !s.busy, true)
+        Field("계좌 전체 최대 보유 종목 수", count, { count = it }, !s.running && !s.busy, true)
+        Field("세션 손실 한도 (원)", session, { session = it }, !s.running && !s.busy, true)
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("그룹 보유종목 자동매도 동의", Modifier.weight(1f), fontSize = 13.sp)
             Switch(manage, { manage = it }, enabled = !s.running)
@@ -411,12 +454,12 @@ private fun StrategyScreen(s: AppState, save: (Strategy) -> Unit) {
         Modifier.fillMaxWidth(),
         enabled = !s.running && !s.busy,
     ) {
-        Text("공통 한도 저장")
+        Text("한도 저장")
     }
 }
 
 @Composable
-private fun Field(
+internal fun Field(
     label: String,
     value: String,
     onChange: (String) -> Unit,
@@ -447,24 +490,25 @@ private fun Field(
 /** 자료 출처와 차단 이유를 표시한다. 지표 점수를 매수 승인과 혼동하지 않는다. */
 @Composable
 internal fun ResearchScreen(s: AppState, analyze: (String, Int, String) -> Unit) {
+    val now = rememberDisplayTime()
     var mapping by rememberSaveable { mutableStateOf("") }
     var year by rememberSaveable { mutableStateOf((LocalDate.now().year - 1).toString()) }
     var code by rememberSaveable { mutableStateOf("11011") }
     Text("허용된 공식 자료의 지표와 매수 차단 사유입니다.", color = Muted, fontSize = 12.sp)
-    Panel("분석 데이터") {
+    Panel("분석 설정") {
         Text(
             "가격: NHPlug · 재무/공시: 금융감독원 OpenDART\n뉴스: 사용권한 확정 전 수집하지 않음",
             fontSize = 13.sp,
             color = Muted,
             lineHeight = 21.sp,
         )
-        Field("종목:기업고유번호 (예: 005930:00126380)", mapping, { mapping = it }, !s.running)
-        Field("재무 보고서 사업연도", year, { year = it }, !s.running, true)
+        Field("종목:기업고유번호 (예: 005930:00126380)", mapping, { mapping = it }, !s.running && !s.busy)
+        Field("재무 보고서 사업연도", year, { year = it }, !s.running && !s.busy, true)
         Field(
             "보고서: 연간 11011 / 반기 11012 / 1Q 11013 / 3Q 11014",
             code,
             { code = it },
-            !s.running,
+            !s.running && !s.busy,
             true,
         )
         Button(
@@ -477,7 +521,7 @@ internal fun ResearchScreen(s: AppState, analyze: (String, Int, String) -> Unit)
                     year.toIntOrNull() != null &&
                     code in listOf("11011", "11012", "11013", "11014"),
         ) {
-            Text("관심종목 분석")
+            Text("분석 시작")
         }
     }
     if (s.research.isEmpty())
@@ -489,7 +533,8 @@ internal fun ResearchScreen(s: AppState, analyze: (String, Int, String) -> Unit)
                 ?.let {
                     Text("참고 기술점수 ${it.score}점 · ${it.reason}", color = Teal, fontSize = 13.sp)
                 }
-            r.buyBlockers(Instant.now()).forEach { Text("• $it", color = Red, fontSize = 12.sp) }
+            r.buyBlockers(now).forEach { Text("• $it", color = Red, fontSize = 12.sp) }
+            r.prices?.let { PriceHistoryChart(it.candles, it.adjusted) }
             r.financials?.let { f ->
                 Text("${f.year} / ${f.reportCode} · 연결재무", fontSize = 12.sp, color = Muted)
                 Text(
@@ -517,14 +562,35 @@ internal fun ResearchScreen(s: AppState, analyze: (String, Int, String) -> Unit)
 @Composable
 internal fun HoldingsScreen(s: AppState, refresh: () -> Unit) {
     val now = rememberDisplayTime()
+    var sort by rememberSaveable { mutableIntStateOf(0) }
     Text("계좌 잔고 기준 · 조회 시각을 확인하세요.", color = Muted, fontSize = 12.sp)
-    OutlinedButton(refresh, enabled = s.connected && !s.busy) {
+    s.portfolio?.let { Text("잔고 기준 ${time(it.at)}", color = Muted, fontSize = 11.sp) }
+    OutlinedButton(refresh, enabled = s.connected && !s.busy && !s.running && !s.storageError) {
         Icon(Icons.Outlined.Refresh, null)
-        Text(" 잔고 새로고침")
+        Spacer(Modifier.width(6.dp))
+        Text("잔고 갱신")
     }
     if (s.portfolio?.holdings.isNullOrEmpty())
         Panel { Empty(Icons.Outlined.PieChart, "조회된 보유종목이 없습니다.") }
-    s.portfolio?.holdings?.forEach { h ->
+    val holdings = s.portfolio?.holdings.orEmpty()
+    if (holdings.isNotEmpty()) {
+        AllocationPanel(holdings)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("평가액", "수익률", "종목명").forEachIndexed { i, label ->
+                FilterChip(sort == i, { sort = i }, label = { Text(label) })
+            }
+        }
+    }
+    val metrics =
+        AccountAnalytics.holdings(holdings).let { rows ->
+            when (sort) {
+                1 -> rows.sortedByDescending { it.returnPercent ?: Double.NEGATIVE_INFINITY }
+                2 -> rows.sortedBy { it.holding.name }
+                else -> rows.sortedByDescending { it.value }
+            }
+        }
+    metrics.forEach { metric ->
+        val h = metric.holding
         Panel {
             Row {
                 Column(Modifier.weight(1f)) {
@@ -541,6 +607,14 @@ internal fun HoldingsScreen(s: AppState, refresh: () -> Unit) {
                 Stat("평균 매입가", won(h.average))
                 Stat("잔고 기준 현재가", won(h.price))
             }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("평가액 ${amount(metric.value)}", fontSize = 12.sp, color = Muted)
+                Text(
+                    percent(metric.returnPercent),
+                    color = if (h.pnl < 0) Blue else Red,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
             s.quotes[h.symbol]?.let { q ->
                 Text(
                     "${if (q.fresh(now)) "조회 시세" else "지난 시세 · 재조회 필요"} ${won(q.price)} · ${time(q.exchangeAt)}",
@@ -555,52 +629,63 @@ internal fun HoldingsScreen(s: AppState, refresh: () -> Unit) {
 /** 앱 주문, 계좌 전체 체결, 손익, 보유 이력을 각각 분리한다. */
 @Composable
 internal fun HistoryScreen(s: AppState, pnl: () -> Unit, section: Int) {
+    var visible by remember(s.selected, section) { mutableIntStateOf(40) }
+    var pendingOnly by rememberSaveable { mutableStateOf(false) }
     when (section) {
         0 -> {
             if (s.orders.isEmpty()) Panel { Empty(Icons.Outlined.ReceiptLong, "앱에서 보낸 주문이 없습니다.") }
-            s.orders.reversed().forEach { r ->
-                Panel {
-                    Row {
+            s.orders
+                .sortedByDescending { it.intent.at }
+                .take(visible)
+                .forEach { r ->
+                    Panel {
+                        Row {
+                            Text(
+                                "${r.intent.symbol} · ${if(r.intent.side==Side.BUY) "매수" else "매도"}",
+                                Modifier.weight(1f),
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Badge(
+                                when (r.status) {
+                                    OrderStatus.ACCEPTED -> "접수"
+                                    OrderStatus.UNKNOWN -> "미확인"
+                                    OrderStatus.SUBMITTING -> "전송 중"
+                                    OrderStatus.REJECTED -> "거절"
+                                },
+                                if (r.status == OrderStatus.UNKNOWN) Red else Teal,
+                            )
+                        }
                         Text(
-                            "${r.intent.symbol} · ${if(r.intent.side==Side.BUY) "매수" else "매도"}",
-                            Modifier.weight(1f),
-                            fontWeight = FontWeight.Bold,
+                            "${r.intent.quantity}주 × ${won(r.intent.limitPrice)}",
+                            fontSize = 16.sp,
                         )
-                        Badge(
-                            when (r.status) {
-                                OrderStatus.ACCEPTED -> "접수"
-                                OrderStatus.UNKNOWN -> "미확인"
-                                OrderStatus.SUBMITTING -> "전송 중"
-                                OrderStatus.REJECTED -> "거절"
-                            },
-                            if (r.status == OrderStatus.UNKNOWN) Red else Teal,
+                        Text(r.intent.reason, fontSize = 12.sp, color = Muted)
+                        if (r.intent.groupId.isNotBlank())
+                            Text(
+                                if (r.intent.groupId == ParkingPolicy.GROUP_ID) "현금 관리 / 파킹"
+                                else
+                                    "${s.book.plans.find { it.id == r.intent.strategyId }?.name ?: r.intent.strategyId} / ${s.book.groups.find { it.id == r.intent.groupId }?.name ?: r.intent.groupId}",
+                                fontSize = 12.sp,
+                                color = Teal,
+                            )
+                        Text(
+                            "${r.intent.brokerId} · •••• ${r.intent.account.takeLast(4)}",
+                            fontSize = 11.sp,
+                            color = Muted,
                         )
+                        Text(time(r.intent.at), fontSize = 11.sp, color = Muted)
+                        if (r.status == OrderStatus.UNKNOWN || r.status == OrderStatus.SUBMITTING)
+                            Text("증권사에서 확인 전 재주문 금지", color = Red, fontSize = 12.sp)
                     }
-                    Text("${r.intent.quantity}주 × ${won(r.intent.limitPrice)}", fontSize = 16.sp)
-                    Text(r.intent.reason, fontSize = 12.sp, color = Muted)
-                    if (r.intent.groupId.isNotBlank())
-                        Text(
-                            if (r.intent.groupId == ParkingPolicy.GROUP_ID) "현금 관리 / 파킹"
-                            else
-                                "${s.book.plans.find { it.id == r.intent.strategyId }?.name ?: r.intent.strategyId} / ${s.book.groups.find { it.id == r.intent.groupId }?.name ?: r.intent.groupId}",
-                            fontSize = 12.sp,
-                            color = Teal,
-                        )
-                    Text(
-                        "${r.intent.brokerId} · •••• ${r.intent.account.takeLast(4)}",
-                        fontSize = 11.sp,
-                        color = Muted,
-                    )
-                    Text(time(r.intent.at), fontSize = 11.sp, color = Muted)
-                    if (r.status == OrderStatus.UNKNOWN || r.status == OrderStatus.SUBMITTING)
-                        Text("증권사에서 확인 전 재주문 금지", color = Red, fontSize = 12.sp)
                 }
-            }
+            if (s.orders.size > visible) OutlinedButton({ visible += 40 }) { Text("40건 더 보기") }
         }
         1 -> {
             Text("당일 계좌 전체 체결입니다. 앱 외부 주문도 포함됩니다.", fontSize = 12.sp, color = Muted)
-            if (s.executions.isEmpty()) Panel { Empty(Icons.Outlined.DoneAll, "조회된 체결 내역이 없습니다.") }
-            s.executions.forEach { e ->
+            FilterChip(pendingOnly, { pendingOnly = !pendingOnly }, label = { Text("미체결 포함만") })
+            val executions = s.executions.filter { !pendingOnly || it.remaining > 0 }
+            if (executions.isEmpty()) Panel { Empty(Icons.Outlined.DoneAll, "조회된 체결 내역이 없습니다.") }
+            executions.take(visible).forEach { e ->
                 Panel(e.name) {
                     Text("${e.side} · 체결 ${e.filled}/${e.ordered}주 · 미체결 ${e.remaining}주")
                     Text(
@@ -610,15 +695,25 @@ internal fun HistoryScreen(s: AppState, pnl: () -> Unit, section: Int) {
                     Text("통합주문번호 ${e.number}", fontSize = 11.sp, color = Muted)
                 }
             }
+            if (executions.size > visible) OutlinedButton({ visible += 40 }) { Text("40건 더 보기") }
         }
         2 -> {
-            OutlinedButton(pnl, enabled = s.connected && !s.busy) { Text("최근 30일 손익 조회") }
-            Panel("증권사 일별 손익") {
+            OutlinedButton(pnl, enabled = s.connected && !s.busy && !s.running && !s.storageError) {
+                Text("30일 손익 조회")
+            }
+            Panel("기간 손익") {
                 Text(
-                    won(s.pnl.takeIf { it.isNotEmpty() }?.sumOf { it.amount }),
+                    if (s.pnlLoadedAt == null && s.pnl.isEmpty()) "—"
+                    else
+                        amount(
+                            s.pnl.fold(java.math.BigDecimal.ZERO) { total, row ->
+                                total + row.amount.toBigDecimal()
+                            }
+                        ),
                     fontSize = 28.sp,
                     fontWeight = FontWeight.Bold,
                 )
+                s.pnlLoadedAt?.let { Text("조회 ${time(it)}", fontSize = 11.sp, color = Muted) }
                 Text(
                     "증권사 보고 금액 · 계좌 전체 기준\n매수수수료와 매도세금은 별도 표시하며 중복 차감하지 않습니다.",
                     fontSize = 12.sp,
@@ -640,27 +735,27 @@ internal fun HistoryScreen(s: AppState, pnl: () -> Unit, section: Int) {
         }
         3 -> {
             Text("계좌별 하루 마지막 조회 잔고 · 기기 내 암호화 보관", fontSize = 12.sp, color = Muted)
-            if (s.snapshots.isEmpty()) Panel { Empty(Icons.Outlined.History, "저장된 보유 이력이 없습니다.") }
-            s.snapshots
-                .reversed()
-                .filter {
+            val snapshots =
+                s.snapshots.reversed().filter {
                     s.selected == null ||
                         (it.account == s.selected.number &&
                             it.brokerId == s.selected.brokerId &&
                             it.environment == s.selected.environment)
                 }
-                .forEach { item ->
-                    Panel(time(item.portfolio.at)) {
-                        Text(
-                            "${item.brokerId} · ${if (item.environment == Environment.MOCK) "모의" else "운영"} •••• ${item.account.takeLast(4)} · 순자산 ${won(item.portfolio.equity)}",
-                            fontSize = 12.sp,
-                            color = Muted,
-                        )
-                        item.portfolio.holdings.forEach { h ->
-                            Text("${h.name} ${h.quantity}주 · 평가손익 ${won(h.pnl)}", fontSize = 13.sp)
-                        }
+            if (snapshots.isEmpty()) Panel { Empty(Icons.Outlined.History, "저장된 보유 이력이 없습니다.") }
+            snapshots.take(visible).forEach { item ->
+                Panel(time(item.portfolio.at)) {
+                    Text(
+                        "${item.brokerId} · ${if (item.environment == Environment.MOCK) "모의" else "운영"} •••• ${item.account.takeLast(4)} · 순자산 ${won(item.portfolio.equity)}",
+                        fontSize = 12.sp,
+                        color = Muted,
+                    )
+                    item.portfolio.holdings.forEach { h ->
+                        Text("${h.name} ${h.quantity}주 · 평가손익 ${won(h.pnl)}", fontSize = 13.sp)
                     }
                 }
+            }
+            if (snapshots.size > visible) OutlinedButton({ visible += 40 }) { Text("40건 더 보기") }
         }
     }
 }
@@ -702,99 +797,4 @@ internal fun LogsScreen(s: AppState) {
             }
         }
     }
-}
-
-/** 키 입력은 rememberSaveable을 쓰지 않고 저장 요청 후 비운다. 삭제는 별도 확인을 요구한다. */
-@Composable
-private fun SettingsDialog(s: AppState, c: TradingController, close: () -> Unit) {
-    var key by remember { mutableStateOf("") }
-    var secret by remember { mutableStateOf("") }
-    var dart by remember { mutableStateOf("") }
-    var delete by remember { mutableStateOf(false) }
-    AlertDialog(
-        onDismissRequest = close,
-        title = { Text("연결 및 보안") },
-        text = {
-            Column(
-                Modifier.verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                TrackingOptions(s.settings.websocketEnabled, !s.running && !s.busy) {
-                    c.saveSettings(s.settings.copy(websocketEnabled = it))
-                }
-                HorizontalDivider()
-                Text(
-                    "키는 Android Keystore로 암호화해 기기 내부에만 저장합니다. 인증할 때만 NHPlug·OpenDART 공식 서버로 전송합니다.",
-                    fontSize = 12.sp,
-                    color = Muted,
-                )
-                Text(
-                    "본인 명의 API 사용신청과 약관 동의가 필요합니다. 이 앱은 NH투자증권의 공식 앱이 아닙니다.",
-                    fontSize = 12.sp,
-                    color = Muted,
-                )
-                Field("NHPlug 앱키", key, { key = it }, !s.running, secret = true)
-                Field("NHPlug secret", secret, { secret = it }, !s.running, secret = true)
-                Field("OpenDART 인증키 (선택)", dart, { dart = it }, !s.running, secret = true)
-                Button(
-                    {
-                        c.saveCredentials(key, secret, dart)
-                        key = ""
-                        secret = ""
-                        dart = ""
-                    },
-                    Modifier.fillMaxWidth(),
-                    enabled = !s.running && !s.busy && key.isNotBlank() && secret.isNotBlank(),
-                ) {
-                    Text("암호화 저장")
-                }
-                OutlinedButton(
-                    { c.connect() },
-                    Modifier.fillMaxWidth(),
-                    enabled = s.hasCredentials && !s.running && !s.busy,
-                ) {
-                    Text("NHPlug 모의계좌 연결")
-                }
-                s.accounts.forEach { a ->
-                    FilterChip(
-                        s.selected == a,
-                        { c.select(a) },
-                        enabled = !s.running,
-                        label = { Text("모의 ${a.masked}") },
-                    )
-                }
-                HorizontalDivider()
-                Text("개인정보 처리 안내", fontWeight = FontWeight.Bold)
-                Text(
-                    "개발자 서버·광고·분석 SDK가 없습니다. 인증키, 주문, 로그, 일별 보유 이력(최근 365개)은 암호화 저장합니다. 실시간 가격과 리서치는 메모리에서 표시합니다. Android 백업과 기기 이전을 차단합니다. 삭제는 이 기기의 정보만 지우며 증권사 주문을 취소하지 않습니다.",
-                    fontSize = 12.sp,
-                    color = Muted,
-                    lineHeight = 19.sp,
-                )
-                Text("실거래는 출시 검증 전 잠겨 있습니다. 모의투자도 수익을 보장하지 않습니다.", fontSize = 12.sp, color = Red)
-                TextButton({ delete = true }, enabled = !s.running && !s.busy) {
-                    Text("키 및 기기 내 전체 기록 삭제", color = Red)
-                }
-            }
-        },
-        confirmButton = { TextButton(close) { Text("닫기") } },
-    )
-    if (delete)
-        AlertDialog(
-            onDismissRequest = { delete = false },
-            title = { Text("기기 내 데이터를 삭제할까요?") },
-            text = {
-                Text("키, 설정, 주문 기록, 로그를 삭제합니다. 미확인 주문이 있다면 먼저 증권사에서 확인하세요. 증권사 계좌와 주문은 삭제되지 않습니다.")
-            },
-            confirmButton = {
-                TextButton({
-                    c.deleteAll()
-                    delete = false
-                    close()
-                }) {
-                    Text("삭제", color = Red)
-                }
-            },
-            dismissButton = { TextButton({ delete = false }) { Text("취소") } },
-        )
 }

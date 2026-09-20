@@ -137,3 +137,8 @@ HTTP 성공과 업무 성공을 구분합니다. 오류 문구/심각도와 응�
 `TargetRequest`는 전략 ID·그룹 ID·발생 회차를 명시한다. `GroupTradingCoordinator`는 날짜 대신 전략/그룹/종목/방향/회차/주문 회수로 키를 구성하고 미완료 키를 재사용한다. 동일 종목의 가격 수신은 공유하되 `NamuExecutionGate.Entry`의 극값·최고/최저·기한은 타겟별로 분리한다.
 
 새 도메인 포트 `TrackingStore`와 값 `TrackingRecord`가 추적 이력 저장을 담당한다. `EncryptedTrackingStore`는 이를 `SecureVault` 위에 구현하고, `AppContainer`에서만 gate에 주입한다. `activate(account, environment)`는 현재 범위의 이력을 불러오며 `clear()`는 메모리를 해제한다. `retain()`은 감시 해제된 이력을 비활성 보존한다. 시세 캐시·ready·이전 트리거는 복원하지 않는다. 상세 정책은 [가격 추적](PRICE_TRACKING.md).
+# 2026-09-20 화면 파생 지표와 비동기 소유권
+
+`AccountAnalytics`는 읽기 전용 `HoldingMetric`, 호가 스프레드와 비율을 계산한다. UI는 이 응용 함수를 사용하고 매매 레이어 계산은 변경하지 않는다. `FinancialPanels.kt`가 비중/호가/실제 종가 차트, `SettingsScreen.kt`가 계좌·시세·보안 편집을 소유한다.
+
+`TradingController`는 actionJob, generation, connectionId로 요청·콜백 수명을 소유한다. AppState의 operation/progress/messageError/pnlLoadedAt은 비밀값 없이 조회 상태를 표현한다. dispatcher와 IO dispatcher 주입은 실제 지연·취소 순서를 테스트하기 위한 구성 지점이다. `HybridPriceMonitor.clear`는 generation을 변경해 이전 REST 결과 반영을 막는다. [상세 흐름](ASYNC_REVIEW.md).

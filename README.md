@@ -46,6 +46,7 @@ flowchart TB
 - [전략·가격 추적·연구 근거](docs/STRATEGY.md)
 - [보안 설계·위협 모델](docs/SECURITY.md)
 - [UI와 사용자 흐름](docs/UX.md)
+- [비동기 인터페이스·기능 블록 검토](docs/ASYNC_REVIEW.md)
 - [Google Play 출시 게이트](docs/RELEASE.md)
 - [개인정보 처리방침 초안](docs/PRIVACY.md)
 - [검증 결과](docs/VERIFICATION.md)
@@ -59,9 +60,11 @@ Android 11 에뮬레이터의 UI 테스트 호스트에서 캡처한 연결 전 
 
 <img src="docs/images/dashboard.png" width="360" alt="StockNHPlug 연결 전 대시보드" />
 
-파킹종목은 전략 화면의 `현금 파킹`에서 설정합니다. [설정·매매 흐름·현재 제한](docs/PARKING.md)을 확인하세요. 실제 NH 자동주문은 기존 검증 게이트로 잠겨 있습니다.
+[자산 화면](docs/images/assets-modern.png) · [설정 화면](docs/images/settings-modern.png) · [130% 확대 화면](docs/images/assets-modern-130.png). 자산 화면은 UI 검증용 합성 계좌입니다.
+
+파킹종목은 전략 화면의 `현금 관리`에서 설정합니다. [설정·매매 흐름·현재 제한](docs/PARKING.md)을 확인하세요. 실제 NH 자동주문은 기존 검증 게이트로 잠겨 있습니다.
 
 ### NamuMagic 가격 추적
 사용자 저장소 기준으로 그룹별 반전 타겟, 10% 경계 WS/적응형 REST 전환, 트리거 후 파킹 자금 조정을 구현했습니다. [클래스·수식·차이와 한계](docs/PRICE_TRACKING.md). NH 실제 통합 검증 전 자동주문 시작 잠금은 유지됩니다.
 
-사용 화면은 홈·자동매매·시세/분석·자산·활동으로 구성합니다. [화면 체계와 사용성](docs/UX.md), [시세/주문 검증 결과](docs/VERIFICATION.md)를 확인하세요.
+사용 화면은 홈·전략·시세·자산·내역으로 구성합니다. 최우선 호가·스프레드, 보유 비중·수익률, 일별 종가 차트, 주문 필터를 제공합니다. [화면 체계와 사용성](docs/UX.md), [시세/주문 검증 결과](docs/VERIFICATION.md)를 확인하세요.

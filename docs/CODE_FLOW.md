@@ -145,3 +145,6 @@ submit → validateDispatch → expiresAt 포함 OrderIntent 생성 → reserve 
 3. 당일 REST 메타데이터 확인 → `NamuExecutionGate.observe`: 상위 제시가 범위 검사 후 타겟별 최고/최저와 방향별 극값 갱신. 저장할 상태가 변경된 경우에만 `TrackingStore.save`.
 4. `GroupTradingCoordinator.tick` → 미완료 회차 재사용 → 최신 전략·연구 근거 → `evaluate` → 공통 위험 검사·전송 전 주문 저널. 이전 날짜의 만료 시간은 새 거래일에 재설정하되 추적 극값은 보존.
 5. 정지/연결 종료는 시세와 메모리만 비운다. 다음 연결에서 이력을 복원하지만 이전 ready 상태로 주문하지 않는다. 전체 데이터 삭제는 tracking 암호문까지 제거한다.
+# 2026-09-20 UI 액션 경계
+
+화면 이벤트 → `task(label)`의 선행 busy 설정 → actionJob 시작 → `read`의 단계별 timeout → 취소/연결 세대 검증 → 상태 교체 → 완료 핸들러 정리. 정지/취소는 actionJob과 거래 루프를 취소하고 connectionId/generation을 갱신한다. 이전 REST/WS 콜백은 새 연결의 화면·추적 상태를 채우지 못한다. 자세한 순서도와 화면별 검토는 [ASYNC_REVIEW.md](ASYNC_REVIEW.md).

@@ -4,11 +4,46 @@ import com.sinpie.stocknhplug.application.*
 import com.sinpie.stocknhplug.domain.*
 import com.sinpie.stocknhplug.trading.NamuExecutionGate
 import java.time.Instant
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.yield
 import org.junit.Assert.*
 import org.junit.Test
 
 class HybridMonitorTest {
+    @Test
+    fun responseAfterClearCannotRepopulateQuotesOrTracking() = runBlocking {
+        val now = Instant.parse("2026-09-21T01:00:00Z")
+        val response = CompletableDeferred<PriceSnapshot>()
+        val received = mutableListOf<Quote>()
+        val gate = NamuExecutionGate()
+        val monitor =
+            HybridPriceMonitor(
+                CurrentPriceProvider { response.await() },
+                Stream(),
+                gate,
+                { received += it },
+                {},
+                { 0.0 },
+                { now },
+            )
+        val pending = async { monitor.refresh("005930") }
+        yield()
+        monitor.clear()
+        response.complete(
+            PriceSnapshot(
+                Quote("005930", 10000, 10000, 10000, now, now, true),
+                MarketRules(now.atZone(SEOUL).toLocalDate(), 7000, 13000, InstrumentKind.STOCK),
+                PriceSource.REST,
+            )
+        )
+        assertTrue(runCatching { pending.await() }.exceptionOrNull() is CancellationException)
+        assertTrue(received.isEmpty())
+        assertTrue(gate.targets().isEmpty())
+    }
+
     private class Stream : MarketStream {
         var wanted = emptySet<String>()
         var ack = emptySet<String>()

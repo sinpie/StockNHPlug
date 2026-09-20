@@ -1,5 +1,15 @@
 # 검증 결과
 
+## 2026-09-20 · 요청 24 UX·비동기 인터페이스
+
+- `testDebugUnitTest lintDebug assembleDebug bundleRelease connectedDebugAndroidTest`: 성공. JVM 105개 실패/오류 0. Android 11/API 30 XML 20개 중 19개 통과, 실제 키 opt-in 진단 1개 의도적 제외. 새 키/주문/취소 API 호출 없음.
+- 린트 오류 0, 버전 관련 경고 14개. Debug APK와 Release AAB 빌드 성공. production AAB 빌드를 Play 발행/서명 검증 완료로 간주하지 않는다.
+- 추가 회귀: 연속 탭, 시작 전 취소, 취소를 무시하는 계좌/잔고 응답, 이전 WebSocket 콜백, clear 뒤 REST 응답, 부분 조회 실패의 이전 스냅샷 보존, 60초 timeout, 정상 빈 손익·키 교체 초기화. 평가액/수익률/비중/스프레드의 0분모·큰 값도 검사했다.
+- Android에서 탭 이동, 계좌 필터, 저장 실패 시 파킹 초안 보존/성공 후 닫힘, 설정 탭, WebSocket 기본 ON, 자동운용 중 수동 조회 비활성을 검증했다. 처음 버튼 앞 공백 때문에 이름 매칭 1건 실패했고 제품 라벨을 수정한 뒤 전체 시험이 통과했다.
+- 확대 글꼴 추가 시험 중 내역의 빈 안내가 첫 화면 밖에 있어 1건 실패했다. 안내로 실제 스크롤한 뒤 표시를 확인하도록 시험을 보완했다. 재빌드 성공 후 기본/130% 글꼴 UI 시나리오 각각 7개 통과. 홈·시세·자산·설정 캡처를 갱신하고 기본 홈/자산/설정 및 확대 시세/자산/설정의 줄바꿈·탭·금액 배치를 육안 확인했다. 전체 기기/200% 확대 검증은 아니다.
+- 캡처는 별도 UI 시험 호스트이고 자산/시세 fixture에는 합성 데이터 표식을 넣었다. production 캡처 차단을 해제하지 않았다. 첫 캡처 전달의 Android 저장소 권한 오류를 disposable 에뮬레이터에서 해결했다. 최종 unroot 전송 종료 오류 후 UID 2000·글꼴 1.0·시험 APK 제거를 직접 재확인했고 기존 preview 설치는 유지했다.
+- 계층 검사·출처 감사·Markdown 링크·diff 공백 검사 통과. 실제 장중 가격 추적, 장시간 백그라운드/Doze, 실제 주문·체결 대사, Google Play 출시 게이트는 이번 UI 시험으로 검증하지 않았다.
+
 ## 2026-09-20 · 사용자 제공 키의 Android 통합 시험
 
 구현 커밋 `e6a5ec5`의 [GitHub Actions 35499203697](https://github.com/sinpie/StockNHPlug/actions/runs/35499203697) 성공: Ubuntu/JDK 17의 JVM·린트·Debug APK·Release AAB·출처·계층 검사 통과. CI에는 실제 키를 전달하지 않았습니다. 기존 Actions Node 20/setup-java v4 폐기 예정 경고는 남아 있습니다.

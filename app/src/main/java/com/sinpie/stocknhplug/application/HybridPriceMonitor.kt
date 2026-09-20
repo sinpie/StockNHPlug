@@ -4,6 +4,8 @@ import com.sinpie.stocknhplug.domain.*
 import com.sinpie.stocknhplug.trading.*
 import java.time.Instant
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 
 /** 전송 선택의 응용 조정자. 실패한 가격 조회만 backoff하며 주문 API를 재호출하지 않는다. */
 class HybridPriceMonitor(
@@ -23,6 +25,7 @@ class HybridPriceMonitor(
     private var modes = emptyMap<String, String>()
     private var reconnectAt = 0.0
     private var reconnectDelay = 30.0
+    private var generation = 0L
 
     /** 콜백은 controller의 Main scope에서 직렬 호출한다. 당일 REST 범위가 없으면 WS를 채택하지 않는다. */
     fun onWebsocket(quote: Quote) {
@@ -135,7 +138,10 @@ class HybridPriceMonitor(
     /** 명시적인 화면 조회도 자동 감시와 같은 검증 경로를 통과한다. 주문을 시작하지 않는다. */
     suspend fun refresh(symbol: String) {
         check(trackingSession(clock()))
+        val owner = generation
         val result = provider.current(symbol)
+        currentCoroutineContext().ensureActive()
+        if (owner != generation) throw CancellationException("추적 연결 변경")
         require(
             result.quote.symbol == symbol &&
                 result.source == PriceSource.REST &&
@@ -146,6 +152,7 @@ class HybridPriceMonitor(
     }
 
     fun clear() {
+        generation++
         stream.close()
         policy.clear()
         metadata.clear()
