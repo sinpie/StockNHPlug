@@ -89,6 +89,9 @@ class NhBroker(private val transport: NhTransport) : Broker {
         side: Side,
         price: Long,
     ): Long {
+        // Every account-scoped operation must reject a foreign broker/environment before I/O.
+        require(account.validFor(environment) && account.brokerId == id)
+        require(symbol.matches(Regex("[0-9]{6}")) && price > 0)
         val j =
             if (side == Side.BUY)
                 transport.call(
@@ -150,8 +153,9 @@ class NhBroker(private val transport: NhTransport) : Broker {
     }
 
     /** 당일 계좌 전체 통합주문 체결을 조회한다. 앱 저널의 시장주문번호와 임의 대응시키지 않는다. */
-    override suspend fun executions(account: Account, date: LocalDate): List<Execution> =
-        transport
+    override suspend fun executions(account: Account, date: LocalDate): List<Execution> {
+        require(account.validFor(environment) && account.brokerId == id)
+        return transport
             .pages(
                 "/krstock/inquiry/v1/dailyOrderExecution",
                 json(
@@ -175,9 +179,11 @@ class NhBroker(private val transport: NhTransport) : Broker {
                     j.getDouble("cns_avg_uit_pr"),
                 )
             }
+    }
 
     /** 최근 30일 계좌 손익을 일자순으로 반환한다. 수수료/세금은 중복 차감하지 않고 원천값을 보존한다. */
     override suspend fun dailyPnl(account: Account): List<DailyPnl> {
+        require(account.validFor(environment) && account.brokerId == id)
         val today = LocalDate.now(SEOUL)
         return transport
             .pages(

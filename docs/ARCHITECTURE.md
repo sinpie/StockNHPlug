@@ -1,5 +1,11 @@
 # 계층과 클래스 상세
 
+## 요청 28 검증 경계 보완
+
+`NhRequestPacer`는 NH infrastructure 내부의 순수 단조 시간 계산기다. 공유 NhTransport mutex 안에서 마지막 전송과 HTTP 429 시각을 기록한다. 평상시 250ms, 429 후 2초 대기 및 30초간 1초 간격을 후속 호출에 적용한다. 재시도·토큰 관리·주문 판단은 소유하지 않는다. throttle 뒤 기존 dispatchGuard가 주문 만료를 다시 검사한다. 429를 받은 원래 호출은 그대로 실패한다.
+
+NhBroker의 모든 계좌 조회 진입점은 환경·증권사 검사를 선행한다. 소유 계층/포트 계약은 그대로다. androidTest 전용 BrokerBoundaryTest는 잘못된 조합을 인증 전에 거절하는지 확인한다. CredentialProbeTest는 실제 모의계좌 조회 → 계좌별 EncryptedAccountHistory 저장/복원 → HistoryExport 메모리 출력과 NhSocket ACK/틱/종목 교체/재연결을 검사한다. 서비스나 주문 엔진을 시작하지 않는다. 진입점별 절차와 미검증 범위는 [MOCK_VERIFICATION.md](MOCK_VERIFICATION.md).
+
 ## 실제 키 조회 진단과 인증 요청
 
 `NhEndpoints.base`는 공식 명세에서 확인한 currentPrice/period만 운영 시세 서버로 지정합니다. 나머지 경로는 선택 환경을 유지합니다. 서비스/전략이 URL을 선택하거나 오류에 따라 주문 서버를 바꾸지 않습니다.

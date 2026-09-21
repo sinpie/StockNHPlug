@@ -28,16 +28,16 @@ class NhTransport(private val vault: SecureVault, val environment: Environment) 
             .followSslRedirects(false)
             .build()
     private val gate = Mutex()
-    private var lastCall = 0L
+    private val pacer = NhRequestPacer()
 
     /** WebSocket에서 사용할 토큰을 반환한다. 캐시 접근도 같은 gate로 보호한다. */
     suspend fun token(): String = withContext(Dispatchers.IO) { gate.withLock { tokenLocked() } }
 
     /** 단조 시계로 호출 간격을 제한한다. 휴대폰 날짜 변경이 호출 제한을 우회하지 못하게 한다. */
     private suspend fun throttle() {
-        val elapsed = (System.nanoTime() - lastCall) / 1_000_000
-        if (elapsed < 250) delay(250 - elapsed)
-        lastCall = System.nanoTime()
+        val wait = pacer.delayMillis(System.nanoTime())
+        if (wait > 0) delay(wait)
+        pacer.sent(System.nanoTime())
     }
 
     /** gate 소유자만 호출한다. 만료 전 토큰을 재사용하고 신규 토큰은 발급 완료 후 암호화 저장한다. */
@@ -46,28 +46,25 @@ class NhTransport(private val vault: SecureVault, val environment: Environment) 
         if (saved != null && saved.getLong("expires") > System.currentTimeMillis() + 60_000)
             return saved.getString("value")
         val credentials = vault.read("credentials") ?: error("앱키를 먼저 저장하세요.")
-        val request = NhAuthentication.request(credentials.getString("key"), credentials.getString("secret"))
+        val request =
+            NhAuthentication.request(credentials.getString("key"), credentials.getString("secret"))
         throttle()
-        client
-            .newCall(
-                request
+        client.newCall(request).execute().use { r ->
+            if (r.code == 429) pacer.rateLimited(System.nanoTime())
+            check(r.isSuccessful) { "NHPlug 인증 실패 (HTTP ${r.code})" }
+            val j = JSONObject(r.body?.string() ?: error("인증 응답 없음"))
+            val token = j.getString("access_token")
+            check(token.isNotBlank())
+            val seconds = j.getLong("expires_in")
+            check(seconds in 60..172800)
+            vault.write(
+                "token",
+                JSONObject()
+                    .put("value", token)
+                    .put("expires", System.currentTimeMillis() + seconds * 1000),
             )
-            .execute()
-            .use { r ->
-                check(r.isSuccessful) { "NHPlug 인증 실패 (HTTP ${r.code})" }
-                val j = JSONObject(r.body?.string() ?: error("인증 응답 없음"))
-                val token = j.getString("access_token")
-                check(token.isNotBlank())
-                val seconds = j.getLong("expires_in")
-                check(seconds in 60..172800)
-                vault.write(
-                    "token",
-                    JSONObject()
-                        .put("value", token)
-                        .put("expires", System.currentTimeMillis() + seconds * 1000),
-                )
-                return token
-            }
+            return token
+        }
     }
 
     /**
@@ -86,7 +83,10 @@ class NhTransport(private val vault: SecureVault, val environment: Environment) 
                 require(path.startsWith("/krstock/") || path == "/n2/acctinfo")
                 if (historyWindowRows != null) {
                     require(path == "/krstock/quote/v1/period" && historyWindowRows in 1..250)
-                    require(input.getInt("array_cnt") == historyWindowRows && input.getString("gubun") == "1")
+                    require(
+                        input.getInt("array_cnt") == historyWindowRows &&
+                            input.getString("gubun") == "1"
+                    )
                 }
                 val token = tokenLocked()
                 var cts = ""
@@ -108,6 +108,7 @@ class NhTransport(private val vault: SecureVault, val environment: Environment) 
                             )
                     if (cts.isNotEmpty()) request.header("cts", cts).header("cts_flag", "Y")
                     client.newCall(request.build()).execute().use { r ->
+                        if (r.code == 429) pacer.rateLimited(System.nanoTime())
                         if (r.code == 401)
                             vault.delete("token") // no hidden retry, especially for orders
                         check(r.isSuccessful) { "NHPlug 요청 실패 (HTTP ${r.code})" }
@@ -120,8 +121,12 @@ class NhTransport(private val vault: SecureVault, val environment: Environment) 
                         // Historical candles request a bounded recent window, not all history.
                         // A full requested window is complete even when older candles exist.
                         // No other query (especially balances/fills) may use this exception.
-                        val completeWindow = NhHistoryWindow.complete(path, historyWindowRows,
-                            j.optJSONArray("Output_1")?.length() ?: 0)
+                        val completeWindow =
+                            NhHistoryWindow.complete(
+                                path,
+                                historyWindowRows,
+                                j.optJSONArray("Output_1")?.length() ?: 0,
+                            )
                         cts = if (more && !completeWindow) r.header("cts").orEmpty() else ""
                         if (more && !completeWindow) {
                             check(
@@ -141,17 +146,22 @@ class NhTransport(private val vault: SecureVault, val environment: Environment) 
 
     /** Explicit recent daily-candle window; partial pages below the requested count still fail. */
     suspend fun historyWindow(input: JSONObject): JSONObject =
-        pages("/krstock/quote/v1/period", input, historyWindowRows = input.getInt("array_cnt")).single()
+        pages("/krstock/quote/v1/period", input, historyWindowRows = input.getInt("array_cnt"))
+            .single()
 }
 
 internal object NhHistoryWindow {
     fun complete(path: String, requested: Int?, received: Int): Boolean =
-        path == "/krstock/quote/v1/period" && requested != null && requested in 1..250 && received >= requested
+        path == "/krstock/quote/v1/period" &&
+            requested != null &&
+            requested in 1..250 &&
+            received >= requested
 }
 
 /** Only explicitly documented live-only quote routes use live during mock trading. */
 internal object NhEndpoints {
     private val liveQuotes = setOf("/krstock/quote/v1/currentPrice", "/krstock/quote/v1/period")
+
     fun base(environment: Environment, path: String): String =
         if (environment == Environment.LIVE || path in liveQuotes) "https://api.nhplug.com:8443"
         else "https://moapi.nhplug.com:8443"
@@ -160,15 +170,19 @@ internal object NhEndpoints {
 /** Official authentication wire format. Never log this request: its URL contains credentials. */
 internal object NhAuthentication {
     fun request(key: String, secret: String): Request {
-        val url = "https://api.nhplug.com:8443/oauth2/token".toHttpUrl().newBuilder()
-            .addQueryParameter("appkey", key)
-            .addQueryParameter("appsecretkey", secret)
-            .addQueryParameter("grant_type", "client_credentials")
-            .addQueryParameter("scope", "oob")
-            .build()
+        val url =
+            "https://api.nhplug.com:8443/oauth2/token"
+                .toHttpUrl()
+                .newBuilder()
+                .addQueryParameter("appkey", key)
+                .addQueryParameter("appsecretkey", secret)
+                .addQueryParameter("grant_type", "client_credentials")
+                .addQueryParameter("scope", "oob")
+                .build()
         // String.toRequestBody silently adds charset=utf-8; NH rejects that token request
         // with HTTP 403. Bytes preserve the documented exact form content type.
-        return Request.Builder().url(url)
+        return Request.Builder()
+            .url(url)
             .post(ByteArray(0).toRequestBody("application/x-www-form-urlencoded".toMediaType()))
             .build()
     }
