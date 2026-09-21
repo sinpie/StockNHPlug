@@ -23,6 +23,8 @@
 
 ## 완료한 검증 및 저장소 반영
 
+- 요청 29 구현 `f4bea8a` main 반영 및 [CI 35562936296](https://github.com/sinpie/StockNHPlug/actions/runs/35562936296) 성공. 신규 정식 릴리즈 없음. 요청 전체는 COMPLETION.md의 외부 근거/실제 주문 E2E가 남아 있으므로 미완료다.
+
 1. 로컬 최종 Gradle 성공: JVM 96개 통과, Android XML 16개 중 15개 통과·실제 키 opt-in 테스트 1개 의도적 제외. 실패 0. lint/Debug APK/Release AAB 성공. VERIFICATION.md 기록 완료.
 2. 계층 검사·소스 감사·문서 링크 검사 통과. 구현 커밋 `cef1cf2`를 main에 push했고 [GitHub CI 35506158166](https://github.com/sinpie/StockNHPlug/actions/runs/35506158166) success 확인.
 3. 이번 요청 20~23의 구현 및 검증 완료. 다음 사용자 요청도 실행 전에 USER_REQUESTS.md에 원문을 추가한다. 앱 전체의 미완료 출시 게이트는 아래 기준과 RELEASE.md/VERIFICATION.md에 남아 있다.

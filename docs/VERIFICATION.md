@@ -241,3 +241,4 @@ API/전략 교체 구현 커밋 `7571725f172df4d8725d719d1a2ce3a49b5d5c6b`의 [G
 - 최종 `testDebugUnitTest lintDebug assembleDebug bundleRelease assembleDebugAndroidTest` 성공. JVM 1,144개 실패/오류 0. 1,000개 조합 ID 각각 1회 실행 및 생성 목록 일치. 린트 오류 0, 기존 의존성 버전 알림 13개. 계층/소스 감사/Markdown 링크/공백 검사 통과.
 - 수정 후 DART 전용 첫 실행은 기업 목록 다운로드 `InterruptedIOException`으로 FAIL(공시/재무/정리 PASS). 별도 수동 재실행은 기업 목록·공시·재무·암호화 저장·정리 모두 PASS, DART_ONLY 전체 PASS. 자동 재시도 코드를 추가하지 않았다. 이 결과는 NH 전체 진단의 HTTP 429 실패나 주문 E2E 미검증을 지우지 않는다.
 - API 30 disposable emulator의 `connectedDebugAndroidTest` 성공: XML 35개 중 34개 통과, 실제 키 opt-in 1개 의도적 제외, 실패/오류 0. Android SAX 정상 ZIP/DTD 거절 및 암호화 분석 설정 저장·구버전 기본값 포함. 임시 debug/test 설치 제거, 기존 preview·폰트·adb 권한 복원 확인. 장시간 백그라운드 자동주문은 수행하지 않았다.
+- 구현 `f4bea8a` main push 및 [GitHub CI 35562936296](https://github.com/sinpie/StockNHPlug/actions/runs/35562936296) success 확인. 원격 JVM/린트/빌드/조합/계층/소스 검사와 산출물 업로드 성공. CI는 실제 계좌·기기 시험을 수행하지 않는다. Actions Node 20/setup-java v4 및 예정 runner 이전 안내가 남아 있다.
