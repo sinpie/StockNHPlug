@@ -88,8 +88,10 @@ data class Strategy(
     val minScore: Int = 70,
     val manageHoldings: Boolean = false,
     val websocketEnabled: Boolean = true,
+    val research: ResearchConfiguration = ResearchConfiguration(),
 ) {
     fun validate() {
+        research.validate()
         require(
             symbols.isNotEmpty() && symbols.size <= 10 && symbols.distinct().size == symbols.size
         ) {

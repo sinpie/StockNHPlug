@@ -504,9 +504,18 @@ internal fun Field(
 @Composable
 internal fun ResearchScreen(s: AppState, analyze: (String, Int, String) -> Unit) {
     val now = rememberDisplayTime()
-    var mapping by rememberSaveable { mutableStateOf("") }
-    var year by rememberSaveable { mutableStateOf((LocalDate.now().year - 1).toString()) }
-    var code by rememberSaveable { mutableStateOf("11011") }
+    var mapping by
+        rememberSaveable(s.accounts.indexOf(s.selected), s.settings.research) {
+            mutableStateOf(s.settings.research.corpMapping)
+        }
+    var year by
+        rememberSaveable(s.accounts.indexOf(s.selected), s.settings.research) {
+            mutableStateOf(s.settings.research.year.toString())
+        }
+    var code by
+        rememberSaveable(s.accounts.indexOf(s.selected), s.settings.research) {
+            mutableStateOf(s.settings.research.reportCode)
+        }
     Text("허용된 공식 자료의 지표와 매수 차단 사유입니다.", color = Muted, fontSize = 12.sp)
     Panel("분석 설정") {
         Text(
@@ -515,8 +524,10 @@ internal fun ResearchScreen(s: AppState, analyze: (String, Int, String) -> Unit)
             color = Muted,
             lineHeight = 21.sp,
         )
-        Field("종목:기업고유번호 (예: 005930:00126380)", mapping, { mapping = it }, !s.running && !s.busy)
-        Field("재무 보고서 사업연도", year, { year = it }, !s.running && !s.busy, true)
+        Text("기업 고유번호는 OpenDART에서 자동 연결합니다. 직접 입력하면 공식 정보와 대조합니다.", fontSize = 12.sp, color = Muted)
+        Field("기업번호 확인 (선택 · 005930:00126380)", mapping, { mapping = it }, !s.running && !s.busy)
+        Field("재무 사업연도 (0: 전년도 자동)", year, { year = it }, !s.running && !s.busy, true)
+        Text("분석 설정은 계좌별로 저장하며, 자동매매 중에는 장중 15분마다 근거를 갱신합니다.", fontSize = 12.sp, color = Muted)
         Field(
             "보고서: 연간 11011 / 반기 11012 / 1Q 11013 / 3Q 11014",
             code,

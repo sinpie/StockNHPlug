@@ -41,6 +41,18 @@ class LocalStoreInstrumentedTest {
     }
 
     @Test
+    fun researchConfigurationPersistsEncryptedAndLegacyDefaultsToAutomaticYear() {
+        val settings = Strategy(research = ResearchConfiguration("005930:00126380", 2025, "11012"))
+        LocalStore(vault).saveSettings(settings)
+        assertEquals(settings.research, LocalStore(vault).settings().research)
+        assertFalse(File(directory, "settings.enc").readText().contains("00126380"))
+        val legacy = vault.read("settings")!!
+        legacy.remove("research")
+        vault.write("settings", legacy)
+        assertEquals(ResearchConfiguration(), LocalStore(vault).settings().research)
+    }
+
+    @Test
     fun websocketOptionDefaultsOnAndPersistsOffWithLegacyMigration() {
         val store = LocalStore(vault)
         assertTrue(store.settings().websocketEnabled)

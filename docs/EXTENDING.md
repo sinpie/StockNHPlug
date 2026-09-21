@@ -1,5 +1,11 @@
 # API·데이터·전략 교체 안내
 
+## 요청 29 연구 식별/공유 시세 계약
+
+CorporateDirectory 포트는 공식 종목코드의 기업 고유번호만 반환한다. ResearchRepository에 directory를 주입하면 수동 corpCode도 공식 식별자와 일치해야 한다. clock 매개변수는 마지막에 두어 기존 trailing lambda 시간 주입을 유지한다. API 교체 시 빈 목록/누락 기업을 샘플로 대체하지 않는다.
+
+SharedMarketStream의 factory에는 물리 MarketStream 하나를 생성하는 함수를 AppContainer에서 주입한다. 계좌 SessionFactory에는 lease를 전달한다. 용량 초과 종목의 ACK를 만들어내지 않으며 REST 폴백이 계속되도록 한다. ResearchRefreshLoop의 실패 콜백은 유효하지 않은 근거를 폐기해야 하며 주문을 호출하거나 데이터 사용권한을 바꾸면 안 된다.
+
 ## NH 요청 간격 검증 보완
 
 NhTransport는 계좌 runtime 사이에 공유하며 NhRequestPacer도 이 인스턴스의 mutex 안에서 공유한다. 새 호출 경로가 별도 client로 이를 우회하지 않도록 한다. HTTP 429 후 대기·감속은 다음 호출에 적용할 뿐 원래 요청을 자동 재전송하지 않는다. 주문 어댑터를 바꿔도 대기 후 dispatchGuard와 UNKNOWN 원장을 유지한다. 정책 경계는 NhRequestPacerTest, 실제 관측 범위는 [MOCK_VERIFICATION.md](MOCK_VERIFICATION.md)를 참고한다.

@@ -11,6 +11,48 @@ class ResearchRepositoryTest {
     private val now = Instant.parse("2026-09-21T01:00:00Z")
 
     @Test
+    fun directoryResolvesCorporateIdentityAndRejectsConflictingManualMapping() = runBlocking {
+        val requested = mutableListOf<String>()
+        val corporate =
+            object : CorporateResearchProvider {
+                override suspend fun financials(
+                    corp: String,
+                    year: Int,
+                    reportCode: String,
+                ): FinancialReport? {
+                    requested += corp
+                    return null
+                }
+
+                override suspend fun disclosures(
+                    corp: String,
+                    from: java.time.LocalDate,
+                    to: java.time.LocalDate,
+                ): List<Disclosure> {
+                    requested += corp
+                    return emptyList()
+                }
+            }
+        val repository =
+            ResearchRepository(
+                PriceHistoryProvider {
+                    PriceHistory(it, emptyList(), false, DataSource.NHPLUG, now)
+                },
+                corporate,
+                UnlicensedNewsProvider(),
+                CorporateDirectory { "00126380" },
+                { now },
+            )
+        val result = repository.inspect("005930", null, 2025, "11011")
+        assertEquals(listOf("00126380", "00126380"), requested)
+        assertTrue(result.disclosuresChecked)
+        assertTrue(
+            runCatching { repository.inspect("005930", "00000001", 2025, "11011") }.isFailure
+        )
+        assertEquals(2, requested.size)
+    }
+
+    @Test
     fun swappedPriceProviderPreservesSourceAndDoesNotInventCorporateEvidence() = runBlocking {
         val history =
             PriceHistory("005930", emptyList(), true, DataSource.LICENSED_ADJUSTED_PRICES, now)

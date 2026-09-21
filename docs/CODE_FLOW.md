@@ -67,7 +67,9 @@ sequenceDiagram
 
 ## 리서치와 매수 판단
 
-`analyze` → 종목코드/기업고유번호 형식 검사 → `ResearchRepository.inspect` → `PriceHistoryProvider.history`, `CorporateResearchProvider.financials/disclosures`, `NewsProvider` → `ResearchEvidence`를 구성합니다. `TradingStrategy.evaluate`가 후보를 평가하며 기본 TechnicalStrategy는 SignalEngine으로 지표와 점수를 계산합니다. UI의 점수가 높아도 `buyBlockers`가 비어 있지 않으면 매수할 수 없습니다.
+`analyze` → `ResearchConfiguration.validate` → 계좌별 `LocalStore.saveSettings` 암호화 저장 → `refreshResearch` → `ResearchRepository.inspect` → `PriceHistoryProvider.history`, `CorporateDirectory.corporation`, `CorporateResearchProvider.financials/disclosures`, `NewsProvider` → `ResearchEvidence`를 구성합니다. 공식 기업코드와 수동 매핑이 다르면 거절합니다. `TradingStrategy.evaluate`가 후보를 평가하며 기본 TechnicalStrategy는 SignalEngine으로 지표와 점수를 계산합니다. 전체 배치가 완료되어야 근거/후보를 공개합니다. UI의 점수가 높아도 `buyBlockers`가 비어 있지 않으면 매수할 수 없습니다.
+
+`startSession`은 세션 자식 작업 `ResearchRefreshLoop`를 시작합니다. 장중 한 배치 완료 후 15분을 기다리며 가격 추적 루프와 독립적으로 실행합니다. 실패하면 근거를 폐기하고, `stop`은 진행 중 갱신도 취소합니다. 연도 0 설정은 조회일의 전년도입니다. 시세 연결은 `AppContainer`의 `SharedMarketStream`이 소유하며 계좌는 `lease`를 통해 자기 종목만 수신/해제합니다. 10개 공통 슬롯을 넘는 종목은 ACK되지 않아 기존 REST 경로로 추적합니다.
 
 현재 일봉은 수정주가 보장이 없고 뉴스 이용권한도 미확정입니다. 이 두 조건은 의도적으로 신규 자동매수를 차단합니다. 테스트 데이터를 운영 근거로 채우거나 `adjusted`/`newsLicensed`만 바꾸어 활성화하면 안 됩니다. 새 공급자는 출처 계약, 공개시각, 기업 매핑, 수정계수 검증을 포함해 문서와 테스트를 함께 수정해야 합니다.
 

@@ -148,7 +148,14 @@ class LocalStore(private val vault: SecureVault) : OrderJournal {
                 .put("loss", s.maxSessionLoss)
                 .put("score", s.minScore)
                 .put("manage", s.manageHoldings)
-                .put("websocket", s.websocketEnabled),
+                .put("websocket", s.websocketEnabled)
+                .put(
+                    "research",
+                    JSONObject()
+                        .put("mapping", s.research.corpMapping)
+                        .put("year", s.research.year)
+                        .put("report", s.research.reportCode),
+                ),
         )
     }
 
@@ -169,6 +176,15 @@ class LocalStore(private val vault: SecureVault) : OrderJournal {
                 j.getInt("score"),
                 j.getBoolean("manage"),
                 if (j.has("websocket")) j.getBoolean("websocket") else true,
+                if (j.has("research"))
+                    j.getJSONObject("research").let {
+                        ResearchConfiguration(
+                            it.getString("mapping"),
+                            it.getInt("year"),
+                            it.getString("report"),
+                        )
+                    }
+                else ResearchConfiguration(),
             )
             .also { it.validate() }
     }

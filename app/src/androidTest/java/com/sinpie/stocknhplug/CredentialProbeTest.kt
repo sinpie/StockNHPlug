@@ -77,6 +77,8 @@ class CredentialProbeTest {
                     name,
                     if (http != null) "FAIL_HTTP_$http"
                     else if (business != null) "FAIL_BUSINESS_$business"
+                    else if (e.message.orEmpty().matches(Regex("DART_DIRECTORY_[A-Z_]{1,30}")))
+                        "FAIL_${e.message}"
                     else "FAIL_${e.javaClass.simpleName.filter { it.isLetterOrDigit() }}",
                 )
                 false
@@ -126,7 +128,10 @@ class CredentialProbeTest {
             report("encrypted_storage", "PASS")
             val nh = NhTransport(vault, Environment.MOCK)
             transport = nh
-            val authenticated = step("nh_auth") { check(nh.token().isNotBlank()) }
+            val directoryOnly =
+                InstrumentationRegistry.getArguments().getString("directoryProbeOnly") == "1"
+            report("profile", if (directoryOnly) "DART_ONLY" else "FULL_READ_ONLY")
+            val authenticated = !directoryOnly && step("nh_auth") { check(nh.token().isNotBlank()) }
             if (authenticated) {
                 val broker = NhBroker(nh)
                 step("mock_accounts") {
@@ -296,9 +301,45 @@ class CredentialProbeTest {
                         socket.close()
                     }
                 }
+                step("shared_quote_three_leases") {
+                    var created = 0
+                    val hub =
+                        com.sinpie.stocknhplug.application.SharedMarketStream({ q, e, d ->
+                            created++
+                            NhSocket(nh, q, e, d)
+                        })
+                    val counts = java.util.concurrent.atomic.AtomicIntegerArray(3)
+                    val leases =
+                        (0..2).map { index -> hub.lease({ counts.incrementAndGet(index) }, {}, {}) }
+                    try {
+                        leases.forEach { it.connect(listOf("005930")) }
+                        kotlinx.coroutines.withTimeout(30_000) {
+                            while ((0..2).any { counts.get(it) == 0 }) kotlinx.coroutines.delay(100)
+                        }
+                        check(created == 1)
+                        leases.first().close()
+                        check(
+                            !leases.first().isConnected() && leases.drop(1).all { it.isConnected() }
+                        )
+                        val before = (0..2).map { counts.get(it) }
+                        kotlinx.coroutines.withTimeout(30_000) {
+                            while ((1..2).any { counts.get(it) <= before[it] }) kotlinx.coroutines
+                                .delay(100)
+                        }
+                        check(counts.get(0) == before[0])
+                    } finally {
+                        leases.forEach { it.close() }
+                    }
+                }
             }
             val dart = credentials.optString("dart")
             if (dart.isNotBlank()) {
+                step("dart_company_directory") {
+                    val directory =
+                        com.sinpie.stocknhplug.research.provider.DartCompanyDirectory { dart }
+                    check(directory.corporation("005930") == "00126380")
+                    check(directory.corporation("000660") != null)
+                }
                 val provider = DartClient(dart)
                 val today = LocalDate.now(SEOUL)
                 step("dart_disclosures") {

@@ -481,53 +481,51 @@ class TradingController(
         task("종목 분석") {
             check(!state.value.running)
             check(state.value.connected)
-            require(
-                year in 2000..LocalDate.now(SEOUL).year &&
-                    reportCode in setOf("11011", "11012", "11013", "11014")
-            )
-            val repository = researchRepository ?: error("계좌를 먼저 연결하세요.")
-            val mapping =
-                corpMapping
-                    .split(',', '\n')
-                    .filter { it.isNotBlank() }
-                    .associate { entry ->
-                        val parts = entry.trim().split(':')
-                        require(
-                            parts.size == 2 &&
-                                parts[0].matches(Regex("[0-9]{6}")) &&
-                                parts[1].matches(Regex("[0-9]{8}"))
-                        ) {
-                            "기업 매핑 형식: 종목코드:공시고유번호"
-                        }
-                        parts[0] to parts[1]
-                    }
-            val evidence = mutableListOf<ResearchEvidence>()
-            val candidates = mutableListOf<Candidate>()
-            val symbols = configuredSymbols()
-            change {
-                it.copy(
-                    research = emptyList(),
-                    candidates = emptyList(),
-                    completedItems = 0,
-                    totalItems = symbols.size,
+            val config = ResearchConfiguration(corpMapping, year, reportCode)
+            config.validate()
+            require(config.resolvedYear(LocalDate.now(SEOUL)) <= LocalDate.now(SEOUL).year)
+            val next = state.value.settings.copy(research = config)
+            read { withContext(ioDispatcher) { store.saveSettings(next) } }
+            change { it.copy(settings = next) }
+            refreshResearch(config, showProgress = true)
+            log("분석 완료 · 각 종목의 매수 차단 사유를 확인하세요.")
+        }
+
+    /**
+     * Publish a complete batch only. A failed refresh cannot turn partial evidence into approval.
+     */
+    private suspend fun refreshResearch(
+        config: ResearchConfiguration,
+        showProgress: Boolean = false,
+    ) {
+        val repository = researchRepository ?: error("계좌를 먼저 연결하세요.")
+        val mapping = config.mapping()
+        val symbols = configuredSymbols()
+        val evidence = mutableListOf<ResearchEvidence>()
+        val candidates = mutableListOf<Candidate>()
+        if (showProgress) change { it.copy(completedItems = 0, totalItems = symbols.size) }
+        for (symbol in symbols) {
+            val today = LocalDate.now(SEOUL)
+            val item = read {
+                repository.inspect(
+                    symbol,
+                    mapping[symbol],
+                    config.resolvedYear(today),
+                    config.reportCode,
                 )
             }
-            for (symbol in symbols) {
-                val item = read { repository.inspect(symbol, mapping[symbol], year, reportCode) }
-                evidence += item
-                strategy.evaluate(symbol, item.prices!!.candles, LocalDate.now(SEOUL))?.let {
-                    candidates += it
-                }
-                change {
-                    it.copy(
-                        research = evidence.toList(),
-                        candidates = candidates.sortedByDescending { c -> c.score },
-                        completedItems = evidence.size,
-                    )
-                }
-            }
-            log("분석 완료 · 데이터 사용권한과 수정주가 검증 전 신규 매수는 차단됩니다.")
+            evidence += item
+            strategy.evaluate(symbol, item.prices!!.candles, today)?.let { candidates += it }
+            if (showProgress) change { it.copy(completedItems = evidence.size) }
         }
+        currentCoroutineContext().ensureActive()
+        change {
+            it.copy(
+                research = evidence.toList(),
+                candidates = candidates.sortedByDescending { c -> c.score },
+            )
+        }
+    }
 
     /** TradingService에서만 호출하는 세션 시작점. 매도 동의/매수 근거·미확인 주문을 검사한 뒤 반복 작업을 만든다. */
     override fun validateStart() {
@@ -566,6 +564,21 @@ class TradingController(
                 try {
                     var nextBalance = 0L
                     var nextPnl = 0L
+                    // Child lifetime belongs to the session: stop cancels in-flight research too.
+                    // Slow providers do not hold up quote tracking or balance reconciliation.
+                    launch {
+                        ResearchRefreshLoop(
+                                { trackingSession(Instant.now()) },
+                                { refreshResearch(state.value.settings.research) },
+                                {
+                                    change {
+                                        it.copy(research = emptyList(), candidates = emptyList())
+                                    }
+                                    log("분석 갱신 실패 · 신규 매수 보류, 다음 갱신 대기")
+                                },
+                            )
+                            .run()
+                    }
                     // 서비스가 수명을 소유한다. 화면 종료나 임의의 시간 제한으로 매매를 끊지 않는다.
                     // OS 종료·네트워크/원장 오류는 여전히 안전 정지하며 주문을 자동 재전송하지 않는다.
                     while (isActive && state.value.running) {

@@ -231,3 +231,13 @@ API/전략 교체 구현 커밋 `7571725f172df4d8725d719d1a2ce3a49b5d5c6b`의 [G
 ### 요청 27 GitHub CI 증거
 
 구현 `ce261d80642276d9e89784497f710f38f7684420`의 [Android verification 35512509056](https://github.com/sinpie/StockNHPlug/actions/runs/35512509056) success 확인. 생성 파일 동기화 검사, 전체 JVM/린트/Debug APK/Release AAB, 새 1,000개 ID 실행 XML 검사, 출처·계층 감사가 통과했다. 후속 커밋은 문서 증거만 기록한다.
+## 요청 29 검증 진행 — 2026-09-21
+
+- ResearchRepository 생성자에 directory 포트를 추가한 첫 빌드에서 기존 trailing clock lambda 호환성 컴파일 실패를 발견했다. clock을 마지막 인자로 유지하여 수정했다.
+- 실제 모의계좌 3개 읽기 전용 진단: 인증, 3계좌 잔고/손익/매수·매도 가능량/암호화 이력 및 메모리 내보내기, 유효 REST 시세/기간 이력, WebSocket 틱·교체·재연결 및 공유 연결 3 lease 테스트 통과. 계좌 2 체결 조회 HTTP 429와 새 DART 기업 목록 형식 처리 실패로 **전체 진단 FAIL**. 주문은 보내지 않았다. 계좌 1·3 체결 조회는 통과했다.
+- DART 전용 재진단으로 `DART_DIRECTORY_ID_FORMAT` 실패 확인. 숫자 6자리 실행 종목 외 식별자를 제외하도록 수정하고 회귀 테스트 추가. 실제 공시/재무 조회와 로컬 정리는 통과했다. 원문 데이터/비밀값은 보고서에 저장하지 않았다.
+- 최종 빌드·DART 재진단·Android 회귀 결과는 아래에 이어 기록한다. 이전 요청 결과를 이번 변경의 통과로 간주하지 않는다.
+
+- 최종 `testDebugUnitTest lintDebug assembleDebug bundleRelease assembleDebugAndroidTest` 성공. JVM 1,144개 실패/오류 0. 1,000개 조합 ID 각각 1회 실행 및 생성 목록 일치. 린트 오류 0, 기존 의존성 버전 알림 13개. 계층/소스 감사/Markdown 링크/공백 검사 통과.
+- 수정 후 DART 전용 첫 실행은 기업 목록 다운로드 `InterruptedIOException`으로 FAIL(공시/재무/정리 PASS). 별도 수동 재실행은 기업 목록·공시·재무·암호화 저장·정리 모두 PASS, DART_ONLY 전체 PASS. 자동 재시도 코드를 추가하지 않았다. 이 결과는 NH 전체 진단의 HTTP 429 실패나 주문 E2E 미검증을 지우지 않는다.
+- API 30 disposable emulator의 `connectedDebugAndroidTest` 성공: XML 35개 중 34개 통과, 실제 키 opt-in 1개 의도적 제외, 실패/오류 0. Android SAX 정상 ZIP/DTD 거절 및 암호화 분석 설정 저장·구버전 기본값 포함. 임시 debug/test 설치 제거, 기존 preview·폰트·adb 권한 복원 확인. 장시간 백그라운드 자동주문은 수행하지 않았다.

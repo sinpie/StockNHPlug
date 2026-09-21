@@ -7,6 +7,11 @@ fun interface PriceHistoryProvider {
     suspend fun history(symbol: String): PriceHistory
 }
 
+/** Official listed stock-code to corporate identity mapping; names are never fuzzy matched. */
+fun interface CorporateDirectory {
+    suspend fun corporation(symbol: String): String?
+}
+
 /** 재무와 공시 조회 포트. 구현체의 HTTP/인증/JSON은 연구 정책에 노출되지 않는다. */
 interface CorporateResearchProvider {
     suspend fun financials(corp: String, year: Int, reportCode: String): FinancialReport?

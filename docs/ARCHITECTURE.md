@@ -1,5 +1,15 @@
 # 계층과 클래스 상세
 
+## 요청 29 · 공유 시세와 기업 자동 연결
+
+`ResearchConfiguration`은 기업 매핑/사업연도/보고서 코드를 계좌 설정에 보관한다. 0년은 평가일의 전년도이며 중복 종목 매핑은 거절한다. LocalStore는 기존 settings 암호문 안에 research 객체를 저장하고 이전 파일은 기본값으로 이행한다. 분석 화면은 저장된 설정으로 초기화한다.
+
+`TradingController.refreshResearch`는 모든 종목의 조회를 완료한 뒤 하나의 근거 묶음을 게시한다. `ResearchRefreshLoop`는 세션 코루틴의 자식으로 실행되어 장중 15분 간격으로 갱신하고 장외에는 1분 단위로 개장 조건만 확인한다. 갱신은 한 번에 한 묶음이며 시세/잔고 루프와 분리한다. 개별 조회 timeout은 근거 비움 후 다음 갱신을 기다리지만 세션 취소는 전파한다. 저장된 설정은 매수 근거나 승인으로 간주하지 않는다.
+
+`AppContainer`가 `SharedMarketStream`을 한 번 조립한다. SessionFactory는 계좌마다 독립 lease를 만들고 응용 계층은 기존 MarketStream 포트를 사용한다. Hub는 구독 합집합을 물리 NhSocket 하나에 전달하고 ACK된 해당 종목만 요청 계좌에 분배한다. 한 계좌 close는 다른 계좌의 연결을 닫지 않는다. 마지막 구독이 없어지면 물리 연결을 닫는다. 세대 번호로 이전 연결 콜백을 폐기하며 연결 대기는 mutex로 직렬화한다. 고유 10종목 용량 초과는 ACK를 주지 않아 기존 HybridPriceMonitor의 REST 경로를 유지한다.
+
+`CorporateDirectory`는 종목코드에 해당하는 공시 고유번호만 반환하는 연구 포트다. `DartCompanyDirectory`는 공식 corpCode.xml ZIP을 제한 크기로 읽고 XML의 정확한 stock_code/corp_code를 매핑한다. `ResearchRepository.inspect`는 이 정보를 우선하며 사용자 입력과 다르면 실패한다. 이름 기반 추정은 없다. UI 입력은 선택 항목으로 바뀐다. 제공자 교체는 AppContainer에서만 조립한다.
+
 ## 요청 28 검증 경계 보완
 
 `NhRequestPacer`는 NH infrastructure 내부의 순수 단조 시간 계산기다. 공유 NhTransport mutex 안에서 마지막 전송과 HTTP 429 시각을 기록한다. 평상시 250ms, 429 후 2초 대기 및 30초간 1초 간격을 후속 호출에 적용한다. 재시도·토큰 관리·주문 판단은 소유하지 않는다. throttle 뒤 기존 dispatchGuard가 주문 만료를 다시 검사한다. 429를 받은 원래 호출은 그대로 실패한다.
