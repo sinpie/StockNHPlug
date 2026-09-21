@@ -4,7 +4,7 @@
 
 ## 이번 요청 반영 상태
 
-- 요청 28: 실제 모의계좌 3개로 조회/암호화 이력 저장·복원/메모리 CSV·ZIP, REST 및 WS 틱·종목 교체·재연결, OpenDART 시험 수행. 3회 모두 일부 REST 신선도/HTTP 429 실패를 포함하므로 전체 통과 아님. 모든 단계와 실행별 실패는 MOCK_VERIFICATION.md/VERIFICATION.md 기록. 계좌별 조회 환경·증권사 경계, 429 후 후속 호출 감속, 진단 전체 실패 판정 보완. JVM 1,129개 및 Android 31개 통과(opt-in 1개 제외), 린트·Debug APK·Release AAB·계층/출처/문서 검사 성공. 시험 키·데이터/설치 정리와 기존 preview/기기 설정 복원 완료. 실제 주문은 보내지 않았으며 GroupExecutionSource/수정주가·뉴스 권한/장시간·동시 자동운용 게이트 때문에 모든 기능의 모의 E2E는 미완료. 새 정식 릴리즈 없음. 저장소 push/CI 확인은 아래 갱신한다.
+- 요청 28: 실제 모의계좌 3개로 조회/암호화 이력 저장·복원/메모리 CSV·ZIP, REST 및 WS 틱·종목 교체·재연결, OpenDART 시험 수행. 3회 모두 일부 REST 신선도/HTTP 429 실패를 포함하므로 전체 통과 아님. 모든 단계와 실행별 실패는 MOCK_VERIFICATION.md/VERIFICATION.md 기록. 계좌별 조회 환경·증권사 경계, 429 후 후속 호출 감속, 진단 전체 실패 판정 보완. JVM 1,129개 및 Android 31개 통과(opt-in 1개 제외), 린트·Debug APK·Release AAB·계층/출처/문서 검사 성공. 시험 키·데이터/설치 정리와 기존 preview/기기 설정 복원 완료. 실제 주문은 보내지 않았으며 GroupExecutionSource/수정주가·뉴스 권한/장시간·동시 자동운용 게이트 때문에 모든 기능의 모의 E2E는 미완료. 새 정식 릴리즈 없음. 구현 `568e749` main push 및 [GitHub CI 35561018253](https://github.com/sinpie/StockNHPlug/actions/runs/35561018253) success 확인. CI는 실제 키/계좌 시험이 아니며 로컬 모의 진단 전체 실패와 미완료 게이트는 그대로다.
 
 - 요청 27 구현·로컬 검증 완료: 원문 기록 후 독립 조합 테스트 1,000개(C0001~C1000) 추가. ROUTE/ORDER/LEDGER/EXPORT 각 200개, SCHEDULE/ALGORITHM 각 100개. 결정적 TSV·전체 Markdown 목록·설계·생성 일치 검사·XML 실행 ID 검사와 CI 연결 완료. 새 1,000개와 기존 125개를 합친 JVM 1,125개 통과, 새 ID 1,000개가 각각 1회 실행되고 실패/오류/skip 0임을 검사. lint/Debug APK/Release AAB 및 계층/출처/문서 검사 통과. 프로덕션 코드·실매매 잠금 변경 없음. 기기/API/실제 키 테스트는 이번 요청에서 실행하지 않음. 구현 `ce261d8` main push 및 [GitHub CI 35512509056](https://github.com/sinpie/StockNHPlug/actions/runs/35512509056) success 확인. 요청 27 완료.
 

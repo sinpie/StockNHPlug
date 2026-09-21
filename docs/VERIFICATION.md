@@ -2,6 +2,8 @@
 
 ## 2026-09-21 · 요청 28 실제 모의계좌 상세 검증
 
+구현 `568e749` main push 및 [GitHub CI 35561018253](https://github.com/sinpie/StockNHPlug/actions/runs/35561018253) success 확인. CI는 실제 키/계좌 시험이 아니며 로컬 모의 진단 전체 실패와 미완료 게이트는 그대로다.
+
 사용자 제공 암호화 키를 메모리에서 복호화하고 disposable API 30 Debug 설치에 암호문으로 전달해 공식 NH MOCK 계좌 API를 시험했다. 실제 데이터/비밀값/계좌번호를 로그·소스·출력 파일로 남기지 않았다. 키/토큰/계좌 이력 정리 및 시험 APK 제거 성공, 기존 preview 설치 유지. 서버 토큰 폐기는 하지 않았다.
 
 - 반환된 모의계좌 3개에서 잔고·당일 체결·최근 손익·매수/매도 가능수량 조회와 계좌별 암호화 이력 재생성/복원 및 메모리 CSV/ZIP 출력을 검증했다. 단계별 결과와 초기 실패는 [MOCK_VERIFICATION.md](MOCK_VERIFICATION.md)에 모두 남겼다. 전체 진단 3회는 모두 `overall=FAIL`이며 성공으로 표시하지 않는다.
