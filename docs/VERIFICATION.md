@@ -242,3 +242,10 @@ API/전략 교체 구현 커밋 `7571725f172df4d8725d719d1a2ce3a49b5d5c6b`의 [G
 - 수정 후 DART 전용 첫 실행은 기업 목록 다운로드 `InterruptedIOException`으로 FAIL(공시/재무/정리 PASS). 별도 수동 재실행은 기업 목록·공시·재무·암호화 저장·정리 모두 PASS, DART_ONLY 전체 PASS. 자동 재시도 코드를 추가하지 않았다. 이 결과는 NH 전체 진단의 HTTP 429 실패나 주문 E2E 미검증을 지우지 않는다.
 - API 30 disposable emulator의 `connectedDebugAndroidTest` 성공: XML 35개 중 34개 통과, 실제 키 opt-in 1개 의도적 제외, 실패/오류 0. Android SAX 정상 ZIP/DTD 거절 및 암호화 분석 설정 저장·구버전 기본값 포함. 임시 debug/test 설치 제거, 기존 preview·폰트·adb 권한 복원 확인. 장시간 백그라운드 자동주문은 수행하지 않았다.
 - 구현 `f4bea8a` main push 및 [GitHub CI 35562936296](https://github.com/sinpie/StockNHPlug/actions/runs/35562936296) success 확인. 원격 JVM/린트/빌드/조합/계층/소스 검사와 산출물 업로드 성공. CI는 실제 계좌·기기 시험을 수행하지 않는다. Actions Node 20/setup-java v4 및 예정 runner 이전 안내가 남아 있다.
+## 요청 30 · 2026-09-26 전체 디버깅
+
+- 수정 전 JVM 1,148개 실행, 신규 회귀 4개 실패(기존 1,144개 통과): 대기 lease 종료 후 복원, 취소 비협조 가능수량 응답 후 주문 진행, 예약 중 취소 후 전송, 분석 실패 후 이전 근거 잔존. 모형 브로커로만 재현했으며 실제 주문은 발송하지 않았다.
+- 수정 후 `testDebugUnitTest lintDebug assembleDebug bundleRelease assembleDebugAndroidTest` 성공. JVM 1,148개 실패/오류 0. 조합 1,000개 ID 각각 1회 실행·실패/오류/skip 0 및 생성 목록 일치 확인.
+- 계층/허용 호스트·소스 감사/문서 링크/공백 검사 성공. 린트 오류 0, 의존성 버전 경고 13개. 기존 Gradle deprecation 및 controller 불필요 safe-call 컴파일 경고가 남는다.
+- Android 회귀는 별도로 실행하여 아래에 기록한다. 실제 키·API·실주문·장시간 운용 시험은 이번 요청에서 실행하지 않았다. 기존 외부 데이터/체결 대사/출시 미완료 게이트는 유지한다.
+- API 30 emulator `connectedDebugAndroidTest` 성공. XML 기준 총 36개 중 35개 통과, 실제 키 opt-in 1개 제외, 실패/오류 0. 신규 내보내기 중복 콜백 시험 포함. 임시 debug/test 설치 제거, 기존 preview 설치·폰트 설정·adb 권한 복원 확인.

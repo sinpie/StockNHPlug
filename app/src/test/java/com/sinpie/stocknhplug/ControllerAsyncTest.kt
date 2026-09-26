@@ -104,6 +104,7 @@ class ControllerAsyncTest {
         val store = Store()
         var creates = 0
         val messages = mutableListOf<(String) -> Unit>()
+        var history: suspend (String) -> PriceHistory = { error("No research") }
         val controller =
             TradingController(
                 store,
@@ -114,7 +115,7 @@ class ControllerAsyncTest {
                         broker,
                         Stream(),
                         ResearchRepository(
-                            PriceHistoryProvider { error("No research") },
+                            PriceHistoryProvider { history(it) },
                             null,
                             UnlicensedNewsProvider(),
                         ),
@@ -126,6 +127,25 @@ class ControllerAsyncTest {
                 ioDispatcher = dispatcher,
                 boundAccount = bound,
             )
+    }
+
+    @Test
+    fun failedAnalysisWithNewConfigurationCannotKeepOldEvidence() = runTest {
+        val h = Harness(StandardTestDispatcher(testScheduler))
+        h.history = { PriceHistory(it, emptyList(), false, DataSource.NHPLUG, Instant.now()) }
+        h.controller.connect()
+        runCurrent()
+        h.controller.analyze("", 2024, "11011")
+        runCurrent()
+        assertTrue(h.controller.state.value.research.isNotEmpty())
+        h.history = { error("unavailable") }
+        h.controller.analyze("", 2025, "11012")
+        runCurrent()
+        assertEquals(2025, h.controller.state.value.settings.research.year)
+        assertTrue(h.controller.state.value.messageError)
+        assertTrue(h.controller.state.value.research.isEmpty())
+        assertTrue(h.controller.state.value.candidates.isEmpty())
+        h.controller.dispose()
     }
 
     @Test

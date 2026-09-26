@@ -486,7 +486,9 @@ class TradingController(
             require(config.resolvedYear(LocalDate.now(SEOUL)) <= LocalDate.now(SEOUL).year)
             val next = state.value.settings.copy(research = config)
             read { withContext(ioDispatcher) { store.saveSettings(next) } }
-            change { it.copy(settings = next) }
+            // Once this request is saved, evidence from an earlier request cannot authorize a
+            // buy, even if the new provider call fails before publishing a complete batch.
+            change { it.copy(settings = next, research = emptyList(), candidates = emptyList()) }
             refreshResearch(config, showProgress = true)
             log("분석 완료 · 각 종목의 매수 차단 사유를 확인하세요.")
         }

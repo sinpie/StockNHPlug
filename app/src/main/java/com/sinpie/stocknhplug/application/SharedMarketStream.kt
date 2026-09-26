@@ -53,12 +53,16 @@ class SharedMarketStream(
         val disconnected: () -> Unit,
     ) : MarketStream {
         var wanted = emptySet<String>()
+        private var leaseGeneration = 0L
 
         override suspend fun connect(symbols: List<String>) {
             validate(symbols.toSet())
+            // close() must also revoke a request queued behind another account's authentication.
+            val owner = synchronized(lock) { leaseGeneration }
             connection.withLock {
                 val start: Pair<MarketStream, Long>? =
                     synchronized(lock) {
+                        if (owner != leaseGeneration) return@withLock
                         wanted = symbols.toSet()
                         clients += this
                         updateLocked()
@@ -143,6 +147,7 @@ class SharedMarketStream(
 
         override fun close() =
             synchronized(lock) {
+                leaseGeneration++
                 clients -= this
                 wanted = emptySet()
                 updateLocked()

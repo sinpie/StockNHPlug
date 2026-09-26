@@ -4,6 +4,8 @@ import com.sinpie.stocknhplug.domain.*
 import java.time.*
 import java.util.UUID
 import kotlin.math.*
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -66,6 +68,7 @@ class TradingEngine(
         allocation: GroupAllocation? = null,
     ): OrderRecord =
         mutex.withLock {
+            currentCoroutineContext().ensureActive()
             settings.validate()
             check(running) { "자동매매가 정지되어 있습니다." }
             check(account.validFor(broker.environment) && account.brokerId == broker.id) {
@@ -164,6 +167,9 @@ class TradingEngine(
                     )
                 }
             val available = broker.available(account, quote.symbol, side, price)
+            // A replaceable adapter may return even after its caller was cancelled. Never turn
+            // that late read into a new durable reservation or an external order.
+            currentCoroutineContext().ensureActive()
             if (allocation != null)
                 require(
                     allocation.groupId.isNotBlank() &&
@@ -202,6 +208,7 @@ class TradingEngine(
             check(journal.reserve(intent)) { "주문 기록 저장 실패" }
             // 아직 Broker.place를 호출하지 않은 거절은 미전송으로 기록한다. 저장 실패 시 SUBMITTING을 보존한다.
             try {
+                currentCoroutineContext().ensureActive()
                 validateDispatch(quote, portfolio)
                 check(intent.dispatchable(now()))
             } catch (_: Exception) {

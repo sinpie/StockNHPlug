@@ -116,3 +116,6 @@ UI 편집/조회는 `accountWorkspace(account)`로 생성한 계좌 고정 명�
 ## 통계 형식 확장
 
 `HistoryExportFormat`/`HistoryExport`가 파일 형식 경계다. 새 형식도 선택 계좌·기간의 고정 스냅샷과 HistoryAnalytics의 미조회/누적 체결 의미를 유지해야 한다. UI나 formatter에서 SecureVault/Broker를 직접 호출하지 않는다. Android 저장기는 platform에 유지하며 단일 사용자 선택 URI만 사용한다. 새 formatter의 문자열 주입·누락·계좌 전환·취소/저장 실패 테스트를 추가한다. [현재 계약](EXPORT_AND_OPERATIONS.md).
+## 요청 30 · 대체 어댑터의 취소 계약
+
+브로커/시세 어댑터는 취소에 협조해야 한다. 그래도 `TradingEngine`은 가능수량의 늦은 반환과 사전 예약 이후 취소를 독립적으로 검사한다. `Broker.place` 이후 취소를 미전송으로 해석하지 않는다. 공유 `MarketStream` lease의 `close`는 이미 Mutex에서 대기 중인 연결 요청까지 무효화한다. 이후 새 `connect`는 허용되며 다른 계좌 lease를 종료하지 않는다. 포트 서명과 AppContainer 조립 경계는 변경하지 않았다.

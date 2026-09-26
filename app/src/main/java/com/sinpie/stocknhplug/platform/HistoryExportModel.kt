@@ -22,6 +22,7 @@ constructor(
     },
 ) : AndroidViewModel(application) {
     private var pending: HistoryExport? = null
+    private var writing = false
     private val mutable = MutableStateFlow(ExportStatus())
     val state = mutable.asStateFlow()
 
@@ -33,12 +34,16 @@ constructor(
     }
 
     fun launchFailed() {
+        if (writing) return
         pending = null
         mutable.value = ExportStatus(message = "저장 화면을 열 수 없습니다. 다시 시도하세요.")
     }
 
     /** 승인된 단일 content URI에만 쓴다. 경로/문서 권한을 영구 저장하거나 키를 내보내지 않는다. */
     fun save(uri: Uri?) {
+        // Duplicate activity results must not release the busy gate while the first stream is
+        // still writing. Its completion owns the status until the stream has been closed.
+        if (writing) return
         val request = pending
         pending = null
         if (uri == null) {
@@ -50,6 +55,7 @@ constructor(
             return
         }
         mutable.value = ExportStatus(true, "통계 파일 저장 중…")
+        writing = true
         viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) {
@@ -66,6 +72,8 @@ constructor(
                 // 외부 제공자의 예외에는 URI/계좌 정보가 있을 수 있어 그대로 노출하지 않는다.
                 mutable.value =
                     ExportStatus(message = "저장하지 못했습니다. 공간·접근 권한을 확인하고 불완전한 파일을 삭제한 뒤 다시 시도하세요.")
+            } finally {
+                writing = false
             }
         }
     }

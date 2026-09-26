@@ -175,3 +175,9 @@ HTTP 성공과 업무 성공을 구분합니다. 오류 문구/심각도와 응�
 ## 테스트 전용 조합 계층 (요청 27)
 
 `CombinationCaseTest`는 test source set의 Parameterized 진입점이며 TSV 케이스를 ROUTE/ORDER/LEDGER/EXPORT/SCHEDULE/ALGORITHM 검증 함수로 전달한다. 내부 MemoryBroker/Journal은 메모리 전용이고 실제 API·키 저장소를 갖지 않는다. 생성기는 독립 기대값과 문서/리소스를 만들고 결과 검증기는 XML 실행 ID를 대조한다. 프로덕션 의존성/소유권은 변경하지 않았다. [클래스 흐름과 조합 명세](COMBINATION_TESTING.md).
+## 요청 30 · 비동기 상태 소유권 보강
+
+- `SharedMarketStream.Client`: 물리 연결 세대와 별도로 lease 세대를 소유한다. `connect`가 Mutex를 기다리기 전에 세대를 캡처하고, `close`가 바꾼 세대라면 등록 자체를 하지 않는다.
+- `TradingEngine.submit`: 취소는 어댑터가 협조하지 않아도 위험 경계에서 검사한다. 조회 완료 후에는 아직 저널을 만들지 않으며, 예약 후 취소는 미전송 거절로 기록한다. Broker.place 이후에는 접수/미확인 결과 보존을 우선한다.
+- `TradingController.analyze`: 새 설정의 저장 성공 시 기존 근거·후보를 무효화한다. 조회 실패가 이전 분석 승인을 되살리지 않는다.
+- `HistoryExportModel`: pending 문서 선택과 writing 단계를 구분한다. 중복 콜백은 writing 단계의 진행 상태와 원본 스냅샷을 변경하지 않는다.

@@ -131,6 +131,34 @@ class SharedMarketStreamTest {
     }
 
     @Test
+    fun closingQueuedLeaseDoesNotRegisterItAfterAnotherAccountsAuthentication() = runBlocking {
+        val release = CompletableDeferred<Unit>()
+        lateinit var wire: Wire
+        val hub =
+            SharedMarketStream({ q, _, d ->
+                Wire(q, d).also {
+                    wire = it
+                    it.pending = release
+                }
+            })
+        val a = hub.lease({}, {}, {})
+        val b = hub.lease({}, {}, {})
+        val first = launch { a.connect(listOf("005930")) }
+        yield()
+        val queued = launch { b.connect(listOf("000660")) }
+        yield()
+        b.close()
+        release.complete(Unit)
+        first.join()
+        queued.join()
+        assertFalse(b.isConnected())
+        assertEquals(setOf("005930"), wire.desired)
+        // A later explicit connect is a new request, not a permanently unusable lease.
+        b.connect(listOf("000660"))
+        assertTrue(b.isConnected())
+    }
+
+    @Test
     fun cancelDuringConnectionReleasesGateForNextAccount() = runBlocking {
         val wires = mutableListOf<Wire>()
         val hub =

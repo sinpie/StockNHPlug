@@ -11,6 +11,8 @@ import com.sinpie.stocknhplug.platform.HistoryExportModel
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.time.*
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -39,6 +41,43 @@ class HistoryExportAndroidTest {
         val end = System.nanoTime() + 5_000_000_000L
         while (model.state.value.busy && System.nanoTime() < end) Thread.sleep(10)
         assertFalse(model.state.value.busy)
+    }
+
+    @Test
+    fun duplicateResultsCannotUnlockAnInFlightExport() {
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val opens = java.util.concurrent.atomic.AtomicInteger()
+        val model =
+            HistoryExportModel(app) {
+                opens.incrementAndGet()
+                entered.countDown()
+                check(release.await(10, TimeUnit.SECONDS))
+                ByteArrayOutputStream()
+            }
+        main {
+            assertTrue(model.prepare(request()))
+            model.save(Uri.parse("content://fixture/first"))
+        }
+        try {
+            assertTrue(entered.await(5, TimeUnit.SECONDS))
+            main {
+                model.save(null)
+                model.save(Uri.parse("content://fixture/duplicate"))
+                model.launchFailed()
+                assertTrue(model.state.value.busy)
+                assertFalse(model.prepare(request()))
+            }
+        } finally {
+            release.countDown()
+        }
+        await(model)
+        assertEquals(1, opens.get())
+        assertTrue(model.state.value.message.contains("저장했습니다"))
+        main {
+            assertTrue(model.prepare(request()))
+            model.save(null)
+        }
     }
 
     @Test

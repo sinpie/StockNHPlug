@@ -3,6 +3,9 @@ package com.sinpie.stocknhplug
 import com.sinpie.stocknhplug.domain.*
 import com.sinpie.stocknhplug.trading.TradingEngine
 import java.time.*
+import kotlin.coroutines.Continuation
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
 import kotlinx.coroutines.*
 import org.junit.Assert.*
 import org.junit.Test
@@ -36,6 +39,7 @@ class TradingEngineTest {
         var fail = false
         var beforeSend: () -> Unit = {}
         var afterAvailable: () -> Unit = {}
+        var availability: suspend () -> Long = { 100L }
 
         override suspend fun accounts() = emptyList<Account>()
 
@@ -50,7 +54,7 @@ class TradingEngineTest {
             price: Long,
         ): Long {
             afterAvailable()
-            return 100L
+            return availability()
         }
 
         override suspend fun place(account: Account, intent: OrderIntent): String {
@@ -61,6 +65,45 @@ class TradingEngineTest {
         }
 
         override suspend fun executions(account: Account, date: LocalDate) = emptyList<Execution>()
+    }
+
+    @Test
+    fun cancellationDuringNonCooperativeAvailabilityNeverReservesOrDispatches() = runBlocking {
+        lateinit var pending: Continuation<Long>
+        val b = FakeBroker().apply { availability = { suspendCoroutine { pending = it } } }
+        val j = Journal()
+        val e = TradingEngine(b, j) { now }.also { it.start(portfolio) }
+        val request = launch { e.submit(account, portfolio, quote, Side.BUY, "test", Strategy()) }
+        yield()
+        request.cancel()
+        pending.resume(100L)
+        request.join()
+        assertEquals(0, b.sent)
+        assertTrue(j.records().isEmpty())
+    }
+
+    @Test
+    fun cancellationDuringReservationRecordsUnsentRejection() = runBlocking {
+        val b = FakeBroker()
+        val j = Journal()
+        val requestJob = Job()
+        val storage =
+            object : OrderJournal by j {
+                override fun reserve(intent: OrderIntent): Boolean {
+                    val result = j.reserve(intent)
+                    requestJob.cancel()
+                    return result
+                }
+            }
+        val e = TradingEngine(b, storage) { now }.also { it.start(portfolio) }
+        val request =
+            launch(requestJob) {
+                runCatching { e.submit(account, portfolio, quote, Side.BUY, "test", Strategy()) }
+            }
+        request.join()
+        assertEquals(0, b.sent)
+        assertEquals(OrderStatus.REJECTED, j.records().single().status)
+        assertFalse(e.running)
     }
 
     @Test
