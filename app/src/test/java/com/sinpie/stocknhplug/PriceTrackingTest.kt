@@ -23,6 +23,20 @@ class PriceTrackingTest {
         TargetRequest(key, "005930", side, target, now.plusSeconds(1800))
 
     @Test
+    fun invalidFutureSnapshotCannotPoisonSubsequentValidQuotes() {
+        val gate = NamuExecutionGate()
+        val current = sample(9000)
+        gate.observe(current, now)
+        gate.evaluate(request(), current.quote, now)
+        val future = sample(8000, now.plusSeconds(3600))
+        gate.observe(future, now)
+        val next = sample(8500, now.plusSeconds(1))
+        gate.observe(next, now.plusSeconds(1))
+        gate.evaluate(request(), next.quote, now.plusSeconds(1))
+        assertEquals(8500L, gate.targets().single().extreme)
+    }
+
+    @Test
     fun validLastPriceCannotHideBidAskOutsideDailyLimits() {
         val q = sample(10000).quote.copy(bid = 999, ask = 999)
         val s = sample(10000).copy(quote = q)

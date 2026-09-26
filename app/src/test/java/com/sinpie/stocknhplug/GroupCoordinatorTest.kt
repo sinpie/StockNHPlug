@@ -113,6 +113,47 @@ class GroupCoordinatorTest {
         }
 
     @Test
+    fun scheduledBuyCannotBypassHistoryIntegrityWhenRecommendationIsOff() = runBlocking {
+        val store = MemoryStore()
+        assertFalse(store.book.plans.first().recommendation.enabled)
+        val broker = FakeBroker()
+        val engine = TradingEngine(broker, store) { now }.also { it.start(portfolio) }
+        val coordinator =
+            GroupTradingCoordinator(
+                store,
+                source,
+                GroupAlgorithmRegistry.defaults(),
+                engine,
+                ImmediateTestGate(),
+            )
+        val good = evidence()
+        val bad = good.copy(prices = good.prices!!.copy(candles = emptyList()))
+        assertNull(
+            coordinator.tick(
+                account,
+                portfolio,
+                mapOf(quote.symbol to quote),
+                listOf(bad),
+                Strategy(),
+                now,
+            )
+        )
+        assertEquals(0, broker.sent)
+        assertTrue(store.records().isEmpty())
+        assertNotNull(
+            coordinator.tick(
+                account,
+                portfolio,
+                mapOf(quote.symbol to quote),
+                listOf(good),
+                Strategy(),
+                now,
+            )
+        )
+        assertEquals(1, broker.sent)
+    }
+
+    @Test
     fun pendingScheduleCarriesOriginalPriceOccurrenceAndLowIntoNextDay() = runBlocking {
         val store = MemoryStore()
         val broker = FakeBroker()

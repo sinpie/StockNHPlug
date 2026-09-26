@@ -1,6 +1,7 @@
 package com.sinpie.stocknhplug.research
 
 import com.sinpie.stocknhplug.domain.Candle
+import com.sinpie.stocknhplug.domain.SEOUL
 import java.math.BigDecimal
 import java.time.*
 
@@ -60,7 +61,34 @@ data class PriceHistory(
     val adjusted: Boolean,
     val source: DataSource,
     val asOf: Instant,
-)
+) {
+    /**
+     * Mandatory for every buy path, including schedules which do not evaluate indicators. Today's
+     * unfinished bar is excluded; future dates, broken OHLCV and stale closed bars fail. Seven
+     * calendar days matches the existing technical-screening freshness limit, not a substitute for
+     * an exchange holiday calendar or proof of adjusted-price licensing.
+     */
+    fun usableFor(expectedSymbol: String, now: Instant): Boolean {
+        val today = now.atZone(SEOUL).toLocalDate()
+        if (symbol != expectedSymbol || asOf > now || candles.any { it.date > today }) return false
+        val closed = candles.filter { it.date < today }
+        val latest = closed.maxOfOrNull { it.date } ?: return false
+        return closed.map { it.date }.distinct().size == closed.size &&
+            closed.all { it.validPrices() } &&
+            java.time.temporal.ChronoUnit.DAYS.between(latest, today) <= 7
+    }
+}
+
+/** Validate both raw and transformed values so multiplication cannot publish infinite highs. */
+private fun Candle.validPrices() =
+    close.isFinite() &&
+        high.isFinite() &&
+        low.isFinite() &&
+        volume.isFinite() &&
+        low > 0 &&
+        high >= low &&
+        close in low..high &&
+        volume >= 0
 
 data class CorporateAction(
     val exDate: LocalDate,
@@ -76,6 +104,7 @@ data class CorporateAction(
 object AdjustedPriceEngine {
     /** 평가시점에 이미 알려진 기업행위만 과거 봉에 적용한다. 계수 출처 검증은 호출 전 공급자 책임이다. */
     fun adjust(raw: List<Candle>, actions: List<CorporateAction>, asOf: Instant): List<Candle> {
+        require(raw.all { it.validPrices() })
         require(
             actions.all {
                 it.priceFactor.isFinite() &&
@@ -96,7 +125,7 @@ object AdjustedPriceEngine {
             val p = applicable.fold(1.0) { a, b -> a * b.priceFactor }
             val v = applicable.fold(1.0) { a, b -> a * b.volumeFactor }
             c.copy(close = c.close * p, high = c.high * p, low = c.low * p, volume = c.volume * v)
-                .also { require(it.close.isFinite() && it.volume.isFinite()) }
+                .also { require(it.validPrices()) }
         }
     }
 }
@@ -169,6 +198,7 @@ data class ResearchEvidence(
     /** 필수 근거가 하나라도 미확정이면 매수를 막는다. 빈 뉴스 목록은 안전하다는 근거가 아니다. */
     fun buyBlockers(now: Instant): List<String> = buildList {
         if (prices?.adjusted != true) add("수정주가 기준 미검증")
+        if (prices?.usableFor(symbol, now) != true) add("가격 이력 무결성·최신성 확인 필요")
         if (financials == null || financials.equity == null || financials.operatingProfit == null)
             add("재무지표 미확인")
         if (
@@ -179,6 +209,7 @@ data class ResearchEvidence(
         if (!disclosuresChecked) add("공시 확인 필요")
         if (disclosures.any { it.risk }) add("주요 위험 공시 검토 필요")
         if (!newsLicensed) add("뉴스 이용권한 미확정")
-        if (checkedAt > now || Duration.between(checkedAt, now).toMinutes() > 30) add("분석 자료 갱신 필요")
+        if (checkedAt > now || Duration.between(checkedAt, now) > Duration.ofMinutes(30))
+            add("분석 자료 갱신 필요")
     }
 }

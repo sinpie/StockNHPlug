@@ -14,6 +14,85 @@ import org.junit.Test
 
 class HybridMonitorTest {
     @Test
+    fun restCrossingSessionCloseCannotPublishOrOpenSocket() = runBlocking {
+        var now = Instant.parse("2026-09-21T06:14:59Z")
+        val gate = NamuExecutionGate()
+        val received = mutableListOf<Quote>()
+        val stream = Stream().apply { connected = false }
+        fun snapshot() =
+            PriceSnapshot(
+                Quote("005930", 10000, 10000, 10000, now, now, true),
+                MarketRules(now.atZone(SEOUL).toLocalDate(), 7000, 13000, InstrumentKind.STOCK),
+                PriceSource.REST,
+            )
+        gate.evaluate(
+            TargetRequest("close", "005930", Side.BUY, 10000, now.plusSeconds(1800)),
+            snapshot().quote,
+            now,
+        )
+        val monitor =
+            HybridPriceMonitor(
+                CurrentPriceProvider {
+                    now = now.plusSeconds(2)
+                    snapshot()
+                },
+                stream,
+                gate,
+                { received += it },
+                {},
+                { 0.0 },
+                { now },
+            )
+        monitor.step(setOf("005930"))
+        assertTrue(received.isEmpty())
+        assertEquals(0, stream.connects)
+        assertFalse(stream.connected)
+    }
+
+    @Test
+    fun websocketAfterSessionCloseCannotUpdatePricesBeforeNextLoopStep() = runBlocking {
+        var now = Instant.parse("2026-09-21T06:14:59Z")
+        val gate = NamuExecutionGate()
+        val received = mutableListOf<Quote>()
+        val stream = Stream().apply { connected = false }
+        fun q(price: Long) = Quote("005930", price, price, price, now, now, true)
+        gate.evaluate(
+            TargetRequest("close", "005930", Side.BUY, 10000, now.plusSeconds(1800)),
+            q(10000),
+            now,
+        )
+        val monitor =
+            HybridPriceMonitor(
+                CurrentPriceProvider {
+                    PriceSnapshot(
+                        q(10000),
+                        MarketRules(
+                            now.atZone(SEOUL).toLocalDate(),
+                            7000,
+                            13000,
+                            InstrumentKind.STOCK,
+                        ),
+                        PriceSource.REST,
+                    )
+                },
+                stream,
+                gate,
+                { received += it },
+                {},
+                { 0.0 },
+                { now },
+            )
+        monitor.step(setOf("005930"))
+        stream.ack = stream.wanted
+        assertEquals(1, received.size)
+        now = now.plusSeconds(2)
+        monitor.onWebsocket(q(9000))
+        assertEquals(1, received.size)
+        monitor.step(setOf("005930"))
+        assertFalse(stream.connected)
+    }
+
+    @Test
     fun responseAfterClearCannotRepopulateQuotesOrTracking() = runBlocking {
         val now = Instant.parse("2026-09-21T01:00:00Z")
         val response = CompletableDeferred<PriceSnapshot>()

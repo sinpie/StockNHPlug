@@ -115,6 +115,20 @@ class NamuExecutionGate(private val store: TrackingStore? = null) : ExecutionGat
     }
 
     override fun observe(snapshot: PriceSnapshot, now: Instant) {
+        // Never retain an invalid future timestamp: otherwise every subsequent normal tick
+        // would appear older and be discarded. Invalidate readiness without poisoning ordering.
+        if (
+            !snapshot.valid(now) ||
+                !snapshot.quote.regular ||
+                snapshot.rules.kind == InstrumentKind.UNKNOWN
+        ) {
+            snapshots.remove(snapshot.quote.symbol)
+            entries.values
+                .filter { it.active && it.request.symbol == snapshot.quote.symbol }
+                .forEach { update(it, snapshot, now) }
+            persist()
+            return
+        }
         val old = snapshots[snapshot.quote.symbol]
         if (
             old != null &&

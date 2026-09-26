@@ -29,7 +29,7 @@ class HybridPriceMonitor(
 
     /** 콜백은 controller의 Main scope에서 직렬 호출한다. 당일 REST 범위가 없으면 WS를 채택하지 않는다. */
     fun onWebsocket(quote: Quote) {
-        if (!websocketEnabled) return
+        if (!websocketEnabled || !trackingSession(clock())) return
         val rules = metadata[quote.symbol] ?: return
         if (quote.symbol !in active || quote.symbol !in stream.acknowledged()) return
         accept(PriceSnapshot(quote, rules, PriceSource.WEBSOCKET))
@@ -54,8 +54,7 @@ class HybridPriceMonitor(
     suspend fun step(symbols: Set<String>) {
         val now = clock()
         if (!trackingSession(now)) {
-            stream.close()
-            active = emptySet()
+            pauseStream()
             return
         }
         updateTargets(symbols, now)
@@ -73,6 +72,11 @@ class HybridPriceMonitor(
             } catch (_: Exception) {
                 policy.failed(due, monotonic())
                 onEvent("$due 시세 조회 지연 · 가격 재확인 대기")
+            }
+            // A REST call can cross 15:15. Do not subscribe from its former near-target state.
+            if (!trackingSession(clock())) {
+                pauseStream()
+                return
             }
             // REST can cross the boundary or move an armed reversal trigger this very step.
             updateTargets(symbols, clock())
@@ -135,6 +139,13 @@ class HybridPriceMonitor(
 
     fun statuses() = policy.statuses(active, stream.acknowledged(), clock())
 
+    private fun pauseStream() {
+        stream.close()
+        active = emptySet()
+        reconnectAt = 0.0
+        reconnectDelay = 30.0
+    }
+
     /** 명시적인 화면 조회도 자동 감시와 같은 검증 경로를 통과한다. 주문을 시작하지 않는다. */
     suspend fun refresh(symbol: String) {
         check(trackingSession(clock()))
@@ -143,7 +154,8 @@ class HybridPriceMonitor(
         currentCoroutineContext().ensureActive()
         if (owner != generation) throw CancellationException("추적 연결 변경")
         require(
-            result.quote.symbol == symbol &&
+            trackingSession(clock()) &&
+                result.quote.symbol == symbol &&
                 result.source == PriceSource.REST &&
                 result.valid(clock())
         )

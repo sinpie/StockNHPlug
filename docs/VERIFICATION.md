@@ -249,3 +249,10 @@ API/전략 교체 구현 커밋 `7571725f172df4d8725d719d1a2ce3a49b5d5c6b`의 [G
 - 계층/허용 호스트·소스 감사/문서 링크/공백 검사 성공. 린트 오류 0, 의존성 버전 경고 13개. 기존 Gradle deprecation 및 controller 불필요 safe-call 컴파일 경고가 남는다.
 - Android 회귀는 별도로 실행하여 아래에 기록한다. 실제 키·API·실주문·장시간 운용 시험은 이번 요청에서 실행하지 않았다. 기존 외부 데이터/체결 대사/출시 미완료 게이트는 유지한다.
 - API 30 emulator `connectedDebugAndroidTest` 성공. XML 기준 총 36개 중 35개 통과, 실제 키 opt-in 1개 제외, 실패/오류 0. 신규 내보내기 중복 콜백 시험 포함. 임시 debug/test 설치 제거, 기존 preview 설치·폰트 설정·adb 권한 복원 확인.
+## 요청 31 · 2026-09-26 재디버깅
+
+- 수정 전 JVM 1,154개 실행 중 신규 5개 실패를 확인: 빈/타종목 가격 근거 승인, 30분 초과 만료 절삭, 조정 후 high overflow, 미래 시세 캐시 오염, REST 운영시간 횡단. 신규 당일 봉 비교 테스트 1개와 기존 1,148개는 통과.
+- 수정 후 중간 JVM 1,154개 모두 통과. 이후 정기매수 통합 및 늦은 WS 경계 2개 추가, 최종 전체 빌드·Android 검증 진행 중.
+- 이전 요청 30의 [CI 36230245020](https://github.com/sinpie/StockNHPlug/actions/runs/36230245020) success를 확인했다. 이는 요청 31 변경의 검증 증거로 사용하지 않는다.
+- 최종 `testDebugUnitTest lintDebug assembleDebug bundleRelease assembleDebugAndroidTest` 성공. JVM 1,156개 실패/오류 0. 조합 1,000개 생성/실행 ID 각각 1회·실패/오류/skip 0 확인. 린트 오류 0/의존성 버전 경고 13. 계층/소스/Markdown 링크/공백 검사 통과.
+- API 30 emulator에서 `connectedDebugAndroidTest` 성공. XML 36개 중 35개 통과, 실제 키 opt-in 1개 제외, 실패/오류 0. 임시 설치 제거 및 기존 preview/폰트/adb 권한 복원 확인. 실제 키/API/주문 및 장시간 운용은 이번 요청에서 시험하지 않았다.

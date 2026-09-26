@@ -181,3 +181,6 @@ HTTP 성공과 업무 성공을 구분합니다. 오류 문구/심각도와 응�
 - `TradingEngine.submit`: 취소는 어댑터가 협조하지 않아도 위험 경계에서 검사한다. 조회 완료 후에는 아직 저널을 만들지 않으며, 예약 후 취소는 미전송 거절로 기록한다. Broker.place 이후에는 접수/미확인 결과 보존을 우선한다.
 - `TradingController.analyze`: 새 설정의 저장 성공 시 기존 근거·후보를 무효화한다. 조회 실패가 이전 분석 승인을 되살리지 않는다.
 - `HistoryExportModel`: pending 문서 선택과 writing 단계를 구분한다. 중복 콜백은 writing 단계의 진행 상태와 원본 스냅샷을 변경하지 않는다.
+## 요청 31 · 연구/시세 검증 위치
+
+`PriceHistory.usableFor`는 공통 `ResearchEvidence.buyBlockers`에서 호출한다. 선택적 추천 지표가 꺼진 정기매수/추가매수/파킹에도 내용 검증을 적용한다. `AdjustedPriceEngine`은 결과 OHLCV까지 검증한다. `NamuExecutionGate.observe`는 유효성을 확인한 뒤에만 순서 비교용 캐시에 저장하며, 무효 입력은 준비 상태를 해제한다. `HybridPriceMonitor`는 조회 시작뿐 아니라 REST 완료와 WS 도착 시점의 운영시간을 검사하고 종료 시 lease를 해제한다. 새 제공자나 조립 위치 변경은 없다.
