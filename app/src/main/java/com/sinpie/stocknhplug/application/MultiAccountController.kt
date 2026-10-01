@@ -18,7 +18,9 @@ class MultiAccountController(
     private var profiles = emptyList<AccountProfile>()
     private var selected: Account? = null
     private var discovering = false
+    private var savingCredentials = false
     private var notice: String? = null
+    private var noticeError = false
     private var failed = false
     private val mutable = MutableStateFlow(AppState())
     override val state: StateFlow<AppState> = mutable
@@ -34,6 +36,12 @@ class MultiAccountController(
         }
         scope.launch {
             discovery.state.collect { s ->
+                // 공유 키 작업의 완료 결과는 선택 계좌의 이전 메시지와 섞지 않는다.
+                if (savingCredentials && !s.busy) {
+                    savingCredentials = false
+                    notice = s.message
+                    noticeError = s.messageError || s.storageError
+                }
                 if (discovering && !s.busy) {
                     discovering = false
                     if (!s.messageError && s.accounts.isNotEmpty()) {
@@ -51,7 +59,11 @@ class MultiAccountController(
                             failed = true
                             notice = "계좌 등록 실패 · 운용 잠금"
                         }
-                    } else notice = s.message
+                        noticeError = failed
+                    } else {
+                        notice = s.message
+                        noticeError = s.messageError || s.storageError
+                    }
                 }
                 publish()
             }
@@ -72,6 +84,7 @@ class MultiAccountController(
 
     private fun idle() =
         !discovering &&
+            !savingCredentials &&
             !discovery.state.value.busy &&
             runtimes.values.none { it.state.value.let { s -> s.running || s.busy } }
 
@@ -99,6 +112,7 @@ class MultiAccountController(
             !failed &&
                 !discovery.state.value.storageError &&
                 !discovering &&
+                !savingCredentials &&
                 !discovery.state.value.busy &&
                 enabled.isNotEmpty() &&
                 enabled.all { p ->
@@ -114,11 +128,16 @@ class MultiAccountController(
                 selected = selected,
                 accountRuns = runs,
                 fleetRunning = runs.any { it.running },
-                fleetBusy = discovering || discovery.state.value.busy || runs.any { it.busy },
+                fleetBusy =
+                    discovering ||
+                        savingCredentials ||
+                        discovery.state.value.busy ||
+                        runs.any { it.busy },
                 hasCredentials = discovery.state.value.hasCredentials,
                 storageError = base.storageError || failed || discovery.state.value.storageError,
                 message = notice ?: base.message,
-                busy = base.busy || discovering || discovery.state.value.busy,
+                messageError = if (notice != null) noticeError || failed else base.messageError,
+                busy = base.busy || discovering || savingCredentials || discovery.state.value.busy,
                 operation =
                     if (discovery.state.value.busy) discovery.state.value.operation
                     else base.operation,
@@ -128,6 +147,7 @@ class MultiAccountController(
     private fun selectedAction(action: (AccountRuntime) -> Unit) {
         if (failed || discovery.state.value.storageError) return
         notice = null
+        noticeError = false
         val runtime = current()
         if (runtime == null) notice = "설정에서 계좌 목록을 조회하고 관리할 계좌를 선택하세요." else action(runtime)
         publish()
@@ -145,8 +165,15 @@ class MultiAccountController(
         if (selected == null) discoverAccounts() else selectedAction { it.connect() }
 
     override fun discoverAccounts() {
+        if (failed || discovery.state.value.storageError) {
+            notice = "계좌 저장소 오류 · 데이터 복구 후 다시 시도하세요."
+            noticeError = true
+            publish()
+            return
+        }
         if (!idle() || failed) {
             notice = "계좌 목록 갱신은 모든 계좌 정지 후 가능합니다."
+            noticeError = false
             publish()
             return
         }
@@ -165,8 +192,10 @@ class MultiAccountController(
             profiles = next
             if (!enabled) runtimes[account]?.stop("계좌 자동운용 해제")
             notice = "자동운용 대상 저장 · 켜기는 즉시 주문을 시작하지 않습니다."
+            noticeError = false
         } catch (_: Exception) {
             notice = "자동운용 대상 저장 실패"
+            noticeError = true
         }
         publish()
     }
@@ -176,6 +205,7 @@ class MultiAccountController(
         check(
             !failed &&
                 !discovering &&
+                !savingCredentials &&
                 !discovery.state.value.busy &&
                 !discovery.state.value.storageError
         )
@@ -199,11 +229,12 @@ class MultiAccountController(
         discovery.stop(reason)
         runtimes.values.forEach { it.stop(reason) }
         notice = reason
+        noticeError = false
         publish()
     }
 
     override fun cancelRequest() {
-        if (discovering) {
+        if (discovering || savingCredentials || discovery.state.value.busy) {
             discovering = false
             discovery.cancelRequest()
         } else current()?.cancelRequest()
@@ -212,8 +243,10 @@ class MultiAccountController(
     }
 
     override fun saveCredentials(key: String, secret: String, dart: String) {
+        if (failed || discovery.state.value.storageError) return
         if (!idle()) {
             notice = "키 변경은 모든 계좌의 실행·요청 종료 후 가능합니다."
+            noticeError = false
             publish()
             return
         }
@@ -226,10 +259,13 @@ class MultiAccountController(
             observers.clear()
             runtimes.values.forEach { it.dispose() }
             runtimes.clear()
+            notice = "키 저장 요청 · 계좌 목록과 각 계좌 연결을 다시 확인하세요."
+            noticeError = false
+            savingCredentials = true
             discovery.saveCredentials(key, secret, dart)
             profiles.forEach { add(it.account) }
-            notice = "키 저장 요청 · 계좌 목록과 각 계좌 연결을 다시 확인하세요."
         } catch (_: Exception) {
+            savingCredentials = false
             failed = true
             notice = "키 변경 처리 실패 · 운용 잠금"
         }
@@ -239,6 +275,7 @@ class MultiAccountController(
     override fun deleteAll() {
         if (!idle()) {
             notice = "모든 계좌의 요청이 끝난 뒤 삭제하세요."
+            noticeError = false
             publish()
             return
         }
@@ -268,6 +305,7 @@ class MultiAccountController(
             runtime.saveBook(book)
         } catch (_: Exception) {
             notice = "기존 설정 가져오기 실패 · 저장소를 확인하세요."
+            noticeError = true
         }
     }
 

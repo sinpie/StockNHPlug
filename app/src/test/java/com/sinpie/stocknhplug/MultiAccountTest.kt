@@ -14,6 +14,73 @@ class MultiAccountTest {
     private val b = Account("2222", Environment.MOCK, "nhplug")
 
     @Test
+    fun credentialCompletionAndErrorBelongToSharedOperationNotSelectedAccount() = runTest {
+        val root = Runtime()
+        val manager =
+            MultiAccountController(
+                root,
+                Directory(listOf(AccountProfile(a))),
+                { Runtime(it) },
+                { StrategyBook.defaults() to Strategy() },
+                StandardTestDispatcher(testScheduler),
+            )
+        runCurrent()
+        for (error in listOf(true, false)) {
+            manager.saveCredentials("test", "test", "")
+            runCurrent()
+            assertTrue(manager.state.value.fleetBusy)
+            root.state.value =
+                root.state.value.copy(
+                    busy = false,
+                    messageError = error,
+                    message = if (error) "키 저장 실패" else "키 저장 완료",
+                )
+            runCurrent()
+            assertEquals(root.state.value.message, manager.state.value.message)
+            assertEquals(error, manager.state.value.messageError)
+            assertFalse(manager.state.value.fleetBusy)
+        }
+    }
+
+    @Test
+    fun cancelCredentialRequestTargetsSharedRuntime() = runTest {
+        val root = Runtime()
+        val child = Runtime(a)
+        val manager =
+            MultiAccountController(
+                root,
+                Directory(listOf(AccountProfile(a))),
+                { child },
+                { StrategyBook.defaults() to Strategy() },
+                StandardTestDispatcher(testScheduler),
+            )
+        runCurrent()
+        manager.saveCredentials("test", "test", "")
+        manager.cancelRequest()
+        assertEquals(1, root.cancels)
+        assertEquals(0, child.cancels)
+    }
+
+    @Test
+    fun failedSharedStorageDoesNotStartDiscoveryOrLeaveBusyForever() = runTest {
+        val root = Runtime()
+        root.state.value = root.state.value.copy(storageError = true)
+        val manager =
+            MultiAccountController(
+                root,
+                Directory(emptyList()),
+                { Runtime(it) },
+                { StrategyBook.defaults() to Strategy() },
+                StandardTestDispatcher(testScheduler),
+            )
+        runCurrent()
+        manager.discoverAccounts()
+        runCurrent()
+        assertEquals(0, root.connections)
+        assertFalse(manager.state.value.fleetBusy)
+    }
+
+    @Test
     fun serviceCannotStartWhenSharedCredentialStorageHasFailed() = runTest {
         val root = Runtime()
         val child = Runtime(a)
@@ -69,6 +136,8 @@ class MultiAccountTest {
         var stops = 0
         var disposed = false
         var valid = true
+        var cancels = 0
+        var connections = 0
 
         override fun validateStart() {
             check(valid && !state.value.busy)
@@ -89,7 +158,9 @@ class MultiAccountTest {
             disposed = true
         }
 
-        override fun saveCredentials(key: String, secret: String, dart: String) {}
+        override fun saveCredentials(key: String, secret: String, dart: String) {
+            state.value = state.value.copy(busy = true, messageError = false)
+        }
 
         override fun saveBook(book: StrategyBook) {
             state.value = state.value.copy(book = book)
@@ -99,7 +170,9 @@ class MultiAccountTest {
             state.value = state.value.copy(settings = settings)
         }
 
-        override fun connect() {}
+        override fun connect() {
+            connections++
+        }
 
         override fun select(account: Account) {
             error("bound runtimes must not switch accounts")
@@ -113,7 +186,9 @@ class MultiAccountTest {
 
         override fun analyze(corpMapping: String, year: Int, reportCode: String) {}
 
-        override fun cancelRequest() {}
+        override fun cancelRequest() {
+            cancels++
+        }
 
         override fun deleteAll() {}
     }

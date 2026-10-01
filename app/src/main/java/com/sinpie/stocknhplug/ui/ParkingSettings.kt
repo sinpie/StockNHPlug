@@ -6,6 +6,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -19,8 +20,8 @@ import java.text.NumberFormat
 /** 파킹 설정은 계좌 공통 현금 정책이다. 입력 초안은 저장 전까지 주문/구독에 영향을 주지 않는다. */
 @Composable
 fun ParkingSettingsCard(state: AppState, save: (StrategyBook) -> Unit) {
-    var editing by remember { mutableStateOf(false) }
-    var pending by remember { mutableStateOf<ParkingPolicy?>(null) }
+    var editing by remember(state.selected) { mutableStateOf(false) }
+    var pending by remember(state.selected) { mutableStateOf<ParkingPolicy?>(null) }
     LaunchedEffect(state.book.parking, pending) {
         if (pending != null && state.book.parking == pending) {
             editing = false
@@ -44,7 +45,10 @@ fun ParkingSettingsCard(state: AppState, save: (StrategyBook) -> Unit) {
                     "앱 파킹 ${holding.quantity}주 · 평균 ${number.format(holding.average)}원 · 실현손익 ${number.format(holding.realized)}원"
             )
             Text("주식 매수 자금이 부족하면 파킹을 먼저 매도하고, 체결과 주문가능 현금을 확인한 뒤 다시 판단합니다.")
-            OutlinedButton({ editing = true }, enabled = !state.running && !state.busy) {
+            OutlinedButton(
+                { editing = true },
+                enabled = !state.running && !state.busy && !state.storageError,
+            ) {
                 Text("파킹 설정")
             }
         }
@@ -61,15 +65,25 @@ private fun ParkingEditor(state: AppState, close: () -> Unit, save: (ParkingPoli
     var draft by remember(state.book.parking) { mutableStateOf(state.book.parking) }
     val symbolLocked = state.orders.any { it.intent.groupId == ParkingPolicy.GROUP_ID }
     val error = runCatching { state.book.copy(parking = draft).validate() }.exceptionOrNull()
-    Dialog(close, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    // Insets own resizing: platform dialog resizing would disagree with Compose scroll bounds.
+    Dialog(
+        close,
+        properties =
+            DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+    ) {
         Surface(Modifier.fillMaxSize()) {
-            Column(Modifier.padding(20.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Column(Modifier.safeDrawingPadding().imePadding().padding(20.dp)) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     TextButton(close) { Text("취소") }
                     Text("파킹 설정", fontWeight = FontWeight.Bold)
                     Button(
                         { save(draft) },
-                        enabled = error == null && !state.running && !state.busy,
+                        enabled =
+                            error == null && !state.running && !state.busy && !state.storageError,
                     ) {
                         Text("파킹 저장")
                     }
@@ -77,10 +91,9 @@ private fun ParkingEditor(state: AppState, close: () -> Unit, save: (ParkingPoli
                 if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
                 else
                     Column(
-                        Modifier.verticalScroll(rememberScrollState()),
+                        Modifier.weight(1f).verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
                         if (state.messageError)
                             Text(state.message, color = MaterialTheme.colorScheme.error)
                         Row(
@@ -94,6 +107,7 @@ private fun ParkingEditor(state: AppState, close: () -> Unit, save: (ParkingPoli
                             draft.symbol,
                             { draft = draft.copy(symbol = it.trim()) },
                             label = { Text("파킹 종목코드 (6자리)") },
+                            modifier = Modifier.fillMaxWidth(),
                             enabled = !symbolLocked,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             singleLine = true,

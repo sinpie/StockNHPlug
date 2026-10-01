@@ -25,8 +25,14 @@ internal fun SettingsDialog(s: AppState, c: TradingWorkspace, close: () -> Unit)
     var dart by remember { mutableStateOf("") }
     var delete by remember { mutableStateOf(false) }
     val editable = !s.running && !s.busy && !s.storageError
-    val globalEditable = !s.fleetRunning && !s.fleetBusy && editable
-    Dialog(close, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    // 저장소 손상 시에도 명시적 삭제 복구는 허용하되 진행 중인 작업은 기다린다.
+    val globalIdle = !s.running && !s.busy && !s.fleetRunning && !s.fleetBusy
+    val globalEditable = globalIdle && !s.storageError
+    Dialog(
+        close,
+        properties =
+            DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+    ) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Column(Modifier.safeDrawingPadding().imePadding()) {
                 Row(
@@ -131,7 +137,7 @@ internal fun SettingsDialog(s: AppState, c: TradingWorkspace, close: () -> Unit)
                                     fontSize = 13.sp,
                                     color = Muted,
                                 )
-                                TextButton({ delete = true }, enabled = globalEditable) {
+                                TextButton({ delete = true }, enabled = globalIdle) {
                                     Text("전체 데이터 삭제", color = Red)
                                 }
                             }
@@ -152,11 +158,14 @@ internal fun SettingsDialog(s: AppState, c: TradingWorkspace, close: () -> Unit)
             title = { Text("전체 데이터를 삭제할까요?") },
             text = { Text("키와 설정, 주문·추적 이력을 삭제합니다. 미확인 주문은 먼저 증권사에서 확인하세요.") },
             confirmButton = {
-                TextButton({
-                    c.deleteAll()
-                    delete = false
-                    close()
-                }) {
+                TextButton(
+                    onClick = {
+                        c.deleteAll()
+                        delete = false
+                        // 실패 결과도 설정 배너에서 확인할 수 있도록 화면을 유지한다.
+                    },
+                    enabled = globalIdle,
+                ) {
                     Text("삭제", color = Red)
                 }
             },

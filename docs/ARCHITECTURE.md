@@ -184,3 +184,11 @@ HTTP 성공과 업무 성공을 구분합니다. 오류 문구/심각도와 응�
 ## 요청 31 · 연구/시세 검증 위치
 
 `PriceHistory.usableFor`는 공통 `ResearchEvidence.buyBlockers`에서 호출한다. 선택적 추천 지표가 꺼진 정기매수/추가매수/파킹에도 내용 검증을 적용한다. `AdjustedPriceEngine`은 결과 OHLCV까지 검증한다. `NamuExecutionGate.observe`는 유효성을 확인한 뒤에만 순서 비교용 캐시에 저장하며, 무효 입력은 준비 상태를 해제한다. `HybridPriceMonitor`는 조회 시작뿐 아니라 REST 완료와 WS 도착 시점의 운영시간을 검사하고 종료 시 lease를 해제한다. 새 제공자나 조립 위치 변경은 없다.
+
+## 요청 32 · 설정 작업 소유권
+
+MultiAccountController는 discovery runtime의 키 저장을 savingCredentials로 추적한다. 전체 busy/시작 게이트는 이 플래그도 검사하며, 완료 상태의 메시지와 오류를 선택 계좌 상태보다 우선 게시한다. cancelRequest는 discovery/키 저장 작업을 해당 runtime에 전달한다. 공유 저장소 오류에서는 계좌 발견을 시작하지 않는다. 포트 변경이나 외부 API 조립 변경은 없다.
+
+SettingsDialog는 전체 idle 여부와 저장 가능 여부를 구분한다. 저장소 오류에도 명시적 확인을 거친 복구용 삭제는 가능하며, 확인 시점에도 작업 잠금을 적용한다. 삭제 결과를 보도록 설정을 닫지 않는다. ParkingSettingsCard의 편집/대기 상태는 selected 계좌를 키로 갖고 계좌 전환 시 폐기한다. 상세 흐름은 DEBUGGING_REQUEST32.md.
+
+SettingsDialog/ParkingEditor는 `decorFitsSystemWindows=false`로 플랫폼의 다이얼로그 축소 대신 Compose의 safeDrawing/IME inset을 사용한다. 파킹 편집기의 헤더를 제외한 남은 높이가 스크롤 viewport가 된다. 이 경계가 실제 화면과 일치해야 키보드가 열린 하단 필드가 보이고 접근성/테스트 스크롤도 정상 동작한다.

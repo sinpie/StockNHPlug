@@ -62,7 +62,7 @@ internal fun AccountManagement(s: AppState, c: TradingWorkspace) {
         }
         OutlinedButton(
             c::discoverAccounts,
-            enabled = !s.fleetRunning && !s.fleetBusy && s.hasCredentials,
+            enabled = !s.fleetRunning && !s.fleetBusy && !s.storageError && s.hasCredentials,
         ) {
             Text("계좌 목록 갱신")
         }

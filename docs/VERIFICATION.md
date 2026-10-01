@@ -256,3 +256,36 @@ API/전략 교체 구현 커밋 `7571725f172df4d8725d719d1a2ce3a49b5d5c6b`의 [G
 - 이전 요청 30의 [CI 36230245020](https://github.com/sinpie/StockNHPlug/actions/runs/36230245020) success를 확인했다. 이는 요청 31 변경의 검증 증거로 사용하지 않는다.
 - 최종 `testDebugUnitTest lintDebug assembleDebug bundleRelease assembleDebugAndroidTest` 성공. JVM 1,156개 실패/오류 0. 조합 1,000개 생성/실행 ID 각각 1회·실패/오류/skip 0 확인. 린트 오류 0/의존성 버전 경고 13. 계층/소스/Markdown 링크/공백 검사 통과.
 - API 30 emulator에서 `connectedDebugAndroidTest` 성공. XML 36개 중 35개 통과, 실제 키 opt-in 1개 제외, 실패/오류 0. 임시 설치 제거 및 기존 preview/폰트/adb 권한 복원 확인. 실제 키/API/주문 및 장시간 운용은 이번 요청에서 시험하지 않았다.
+
+## 2026-10-01 · 요청 32 NHPlug / UI / 설정
+
+- 수정 전 신규 MultiAccountTest 3개가 모두 실패: 공유 키 저장 결과 가림, 잘못된 취소 대상, 공유 저장소 오류 시 발견 작업 진입. 수정 후 신규 3개 포함 JVM **1,159개**, 실패/오류 0.
+- 중간 빌드는 새 Android 테스트의 assertEquals import 누락으로 실패했다. import 수정 후 testDebugUnitTest / lintDebug / assembleDebug / bundleRelease / assembleDebugAndroidTest 성공. 린트 오류 0, 기존 도구/라이브러리 버전 경고 13.
+- API 30 `stocknhplug-test`, 별도 임시 debug 설치에서 connectedDebugAndroidTest 성공. XML **38개 중 37개 통과, 실제 키 opt-in 1개 제외**, 실패/오류 0. 콘솔 Finished 39 문구 대신 XML testcase/attributes를 기준으로 집계한다.
+- SettingsUiTest 4개 + UiInstrumentedTest 1개 + FinancialUiTest 2개 + WorkspaceInstrumentedTest 2개를 기본/130% 글꼴에서 **각 9개 통과**. 설정 탭/삭제 복구/작업 잠금/파킹 초안·저장 실패, 전체 메뉴 이동/빈 화면, 합성 자산 정렬과 시세 지연/그룹 검색을 확인. 실제 사용자 계좌를 화면 fixture로 사용하지 않았다.
+- 실제 MainActivity **COLD 실행 성공**, 프로세스 확인. 임시 debug/test 패키지 제거, 기존 패키지 목록·폰트·adb 권한 복원 확인.
+- 화면 캡처를 육안 검토 후 파킹 제목/버튼 중앙 정렬 및 종목 입력 너비를 추가 보완했다. 이 마지막 UI 변경의 빌드/설정 재시험 결과는 아래에 추가한다.
+- 조합 목록/실행 ID 1,000개 일치, 계층 검사, 소스 감사 통과. Markdown 링크/차이 검사는 최종 문서 기록 후 다시 확인한다.
+
+### 실제 모의 API 진단과 남은 항목
+
+수정 전 기준 APK에서 승인된 암호화 키로 1회 읽기 전용 진단을 실행했다. 인증, 계좌 목록 3개, 여러 계좌 조회/암호화 이력/메모리 내보내기, 원시 일봉, OpenDART 조회는 통과했다. 계좌 3 첫 잔고 HTTP 429, REST 신선도 실패, WS 틱/재연결·공유 단계 시간 초과를 포함해 **전체 FAIL**이다. 최초·종목 교체 ACK 성공과 틱 수신 성공을 구분한다. 한국 23시대 장외 진단이며 시계 차이는 1초로 확인했다. 장중 REST/WS 및 지속 운용은 재검증이 필요하다. 단계별 표는 [DEBUGGING_REQUEST32.md](DEBUGGING_REQUEST32.md), 기존 이력은 MOCK_VERIFICATION.md.
+
+키·시험 데이터·임시 APK 제거 성공. 실제 주문을 발송하지 않았다. 실매매·GroupExecutionSource 대사·수정주가/뉴스 권한·장시간 운용/Play 출시 게이트는 미완료로 유지한다. 새 정식 릴리즈의 근거로 이번 부분 성공을 사용하지 않는다.
+
+### 2026-10-02 · 키보드 경계 추가 재현
+
+하단 파킹 입력란의 실제 가시성 검사를 강화한 뒤 기본 글꼴에서 3회 실패했다(첫 assertIsDisplayed, 이어서 5초 가시성 대기 두 차례). scroll 영역에 weight만 주거나 애니메이션 대기만 늘려도 해결되지 않았다. 합성 입력의 semantics 경계와 실제 캡처를 대조해 플랫폼 다이얼로그 크기/Compose viewport 불일치를 확인했다. 두 전체 화면 설정에서 decorFitsSystemWindows=false로 통일한 뒤 강화한 SettingsUiTest 4개가 기본/130%에서 각각 통과했다. 임시 설치와 기기 설정 복원 및 COLD 실행도 재확인했다.
+
+이 과정에서 Espresso가 직접 의존성에 없어 새 테스트 컴파일이 실패한 중간 시도도 있었다. 의존성을 추가하지 않고 제거했으며, 최종 검사는 Compose의 가시성 검사로 수행한다. 임시 semantics 덤프 코드는 원인 확인 후 제거했다. 최종 소스의 전체 재검증과 캡처 결과는 다음 기록에 남긴다.
+
+### 2026-10-02 · 최종 소스 결과
+
+- 마지막 창 크기/가시성 수정 및 임시 진단 코드 제거 후 testDebugUnitTest / lintDebug / assembleDebug / bundleRelease / assembleDebugAndroidTest 성공. JVM 1,159개 실패/오류 0, 린트 오류 0/버전 경고 13.
+- connectedDebugAndroidTest 재실행: XML 38개 중 37개 통과, opt-in 1개 제외, 실패/오류 0. 기본/130% 화면 9개씩 재실행도 모두 통과. 하단 파킹 입력과 고정 저장 버튼의 가시성 포함.
+- 실제 런처 COLD 실행, 임시 설치 제거 및 원래 패키지/폰트/adb 권한 복원 확인. 이번 테스트에 시작한 headless emulator도 종료한다.
+- 계층/소스 감사, 결정적 조합 1,000개 목록/실행 ID 검사 및 문서 링크/차이 검사 통과. 새 정식 릴리즈는 발행하지 않는다. 실제 API 전체 FAIL과 기존 출시 잠금을 그대로 유지한다.
+
+최종 화면 자료(비밀 입력 없음/합성 자료): [계좌 설정](images/settings-account.png), [보안](images/settings-security-130.png), [파킹 하단 입력](images/settings-parking-input-130.png), [홈](images/dashboard-130.png), [자산](images/assets-modern-130.png), [시세](images/market-workspace-130.png). Dialog 캡처는 IME 자체를 포함하지 않으므로 파킹 이미지의 비어 있는 하단은 키보드 예약 영역이다. 이 이미지를 키보드 미표시로 해석하지 않는다.
+
+추가로 test 소스에만 UiAutomation 네이티브 캡처를 넣어 실제 창/키보드 배치와 저장 버튼·하단 필드를 확인했다([기본](images/settings-parking-device.png), [130%](images/settings-parking-device-130.png)). 프로덕션 권한/기능 변경은 없다. 이 캡처 추가 후 전체 Gradle 명령 성공, SettingsUiTest 각 글꼴 4개 통과, COLD 실행/기기 복원 확인. 시험을 위해 시작한 에뮬레이터 종료 완료.
