@@ -166,19 +166,7 @@ class NhBroker(private val transport: NhTransport) : Broker {
                 ),
                 true,
             )
-            .flatMap { it.optJSONArray("Output_1")?.objects().orEmpty() }
-            .map { j ->
-                Execution(
-                    j.getString("itg_orr_no"),
-                    j.getString("iem_cd"),
-                    j.getString("iem_nm"),
-                    j.getString("sby_dit_cd_nm"),
-                    j.getLong("orr_qty"),
-                    j.getLong("tot_cns_qty"),
-                    j.getLong("ny_cns_qty"),
-                    j.getDouble("cns_avg_uit_pr"),
-                )
-            }
+            .flatMap(NhExecutionParser::parse)
     }
 
     /** 최근 30일 계좌 손익을 일자순으로 반환한다. 수수료/세금은 중복 차감하지 않고 원천값을 보존한다. */

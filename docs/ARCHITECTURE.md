@@ -192,3 +192,7 @@ MultiAccountController는 discovery runtime의 키 저장을 savingCredentials�
 SettingsDialog는 전체 idle 여부와 저장 가능 여부를 구분한다. 저장소 오류에도 명시적 확인을 거친 복구용 삭제는 가능하며, 확인 시점에도 작업 잠금을 적용한다. 삭제 결과를 보도록 설정을 닫지 않는다. ParkingSettingsCard의 편집/대기 상태는 selected 계좌를 키로 갖고 계좌 전환 시 폐기한다. 상세 흐름은 DEBUGGING_REQUEST32.md.
 
 SettingsDialog/ParkingEditor는 `decorFitsSystemWindows=false`로 플랫폼의 다이얼로그 축소 대신 Compose의 safeDrawing/IME inset을 사용한다. 파킹 편집기의 헤더를 제외한 남은 높이가 스크롤 viewport가 된다. 이 경계가 실제 화면과 일치해야 키보드가 열린 하단 필드가 보이고 접근성/테스트 스크롤도 정상 동작한다.
+
+## 2026-10-02 체결 응답 경계
+
+`NhBroker.executions`는 페이지를 받은 뒤 내부 `NhExecutionParser`로 위임한다. `rows`는 현재 Output_0 배열과 이전 Output_1 봉투를 구분하고 `parse`는 정수 수량·누적 체결금액·평균가를 검사한다. 외부 포트와 그룹 소유권 계약은 바뀌지 않는다. AndroidTest의 `MockOrderProbeTest`는 명시적 opt-in 모의 주문/취소 진단이며 AppContainer/운영 UI에는 연결되지 않는다. 상세 흐름은 [요청 33·34](MOCK_TEST_REQUEST33.md)를 참조한다.

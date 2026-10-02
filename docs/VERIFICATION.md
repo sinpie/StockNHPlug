@@ -289,3 +289,15 @@ API/전략 교체 구현 커밋 `7571725f172df4d8725d719d1a2ce3a49b5d5c6b`의 [G
 최종 화면 자료(비밀 입력 없음/합성 자료): [계좌 설정](images/settings-account.png), [보안](images/settings-security-130.png), [파킹 하단 입력](images/settings-parking-input-130.png), [홈](images/dashboard-130.png), [자산](images/assets-modern-130.png), [시세](images/market-workspace-130.png). Dialog 캡처는 IME 자체를 포함하지 않으므로 파킹 이미지의 비어 있는 하단은 키보드 예약 영역이다. 이 이미지를 키보드 미표시로 해석하지 않는다.
 
 추가로 test 소스에만 UiAutomation 네이티브 캡처를 넣어 실제 창/키보드 배치와 저장 버튼·하단 필드를 확인했다([기본](images/settings-parking-device.png), [130%](images/settings-parking-device-130.png)). 프로덕션 권한/기능 변경은 없다. 이 캡처 추가 후 전체 Gradle 명령 성공, SettingsUiTest 각 글꼴 4개 통과, COLD 실행/기기 복원 확인. 시험을 위해 시작한 에뮬레이터 종료 완료.
+
+## 2026-10-02 요청 33·34 실제 모의계좌 진단
+
+사용자의 모의 주문 허용을 원문 기록 후 반영했다. [상세 보고서](MOCK_TEST_REQUEST33.md)에 명세 해시·진단 클래스/흐름·세 시도의 실패 및 안전 정리 증거를 기록했다.
+
+- 실제 읽기 전용 API: 인증/모의계좌 3개/대부분 계좌 조회/장중 REST 검증/가격 이력/DART 성공. 계좌 2 잔고 429, WebSocket 수신 및 공유 연결 시간 초과로 전체 FAIL. 부모 mock_accounts=PASS가 개별 실패를 덮지 않는다.
+- 모의 주문 진단 세 번 모두 SUBMITTING 이전 중단. 1회차 사전 검사 예외, 2회차 선택 계좌 주문가능수량 0, 3회차 가격/호가/신선도 검사 거절. **주문 및 취소 전송 0건**. 실제 접수/취소/체결 검증은 미완료다.
+- 모든 실제 API 진단의 local_cleanup=PASS 및 새 Debug/Test 설치 제거 확인. 키·계좌번호·원문 응답을 문서/소스에 남기지 않았다.
+- 공식 Output_0 체결 배열 누락 수정, JVM 1,163개 통과. 신규 4개 파서 검사 포함, 조합 1,000개 전부 1회 실행/실패·오류·skip 0. lint 오류 0/버전 경고 13, Debug APK·Release AAB·AndroidTest APK 빌드 성공. AndroidTest retain 변수의 Kotlin 경고 1개가 있으며 빌드 실패는 아니다.
+- 계층/출처 감사, 조합 목록 일치, 문서 링크 검사 성공. 자동전략·파킹·그룹 체결 대사·수정주가/뉴스 계약 및 출시 게이트는 미완료 상태를 유지한다. 새 정식 릴리즈 없음.
+
+- 최종 Android 전체 회귀: XML tests=39, failures=0, errors=0, skipped=2 → 37개 통과. 별도 실제 API/주문 진단 실패를 이 결과로 대체하지 않는다. 임시 설치 제거, 기존 preview·폰트·adb 권한 복원 확인.
