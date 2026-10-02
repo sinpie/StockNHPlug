@@ -196,3 +196,9 @@ SettingsDialog/ParkingEditor는 `decorFitsSystemWindows=false`로 플랫폼의 �
 ## 2026-10-02 체결 응답 경계
 
 `NhBroker.executions`는 페이지를 받은 뒤 내부 `NhExecutionParser`로 위임한다. `rows`는 현재 Output_0 배열과 이전 Output_1 봉투를 구분하고 `parse`는 정수 수량·누적 체결금액·평균가를 검사한다. 외부 포트와 그룹 소유권 계약은 바뀌지 않는다. AndroidTest의 `MockOrderProbeTest`는 명시적 opt-in 모의 주문/취소 진단이며 AppContainer/운영 UI에는 연결되지 않는다. 상세 흐름은 [요청 33·34](MOCK_TEST_REQUEST33.md)를 참조한다.
+
+## 요청 35 전송 제어
+
+NhTransport가 환경별 최소 간격을 NhRequestPacer에 주입한다. MOCK 1.1초/LIVE 250ms이며 429 quiet period와 큰 값을 사용한다. 기존 transport mutex와 단조 시계를 유지한다. 포트/조립 책임 변경은 없다. NhSocket의 거절 이벤트는 허용 형식의 코드만 포함한다.
+
+모의 진단 `MockOrderProbeTest`의 `accountTerminal`은 당일 주문이 없었던 계좌 범위의 진단 종료 판정이다. `inspectRetainedOrderReadOnly`는 보존 원장을 읽어 조회만 수행하고 종료 확인 후 정리한다. 운영 GroupExecutionSource에 연결하지 않는다. `MockOrderTerminalTest`는 취소의 두 행 응답과 모호한 상태 거절을 검증한다.

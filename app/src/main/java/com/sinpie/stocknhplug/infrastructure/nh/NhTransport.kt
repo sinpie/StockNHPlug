@@ -28,7 +28,9 @@ class NhTransport(private val vault: SecureVault, val environment: Environment) 
             .followSslRedirects(false)
             .build()
     private val gate = Mutex()
-    private val pacer = NhRequestPacer()
+    // Mock diagnostics repeatedly encountered 429 at 4/s. Start conservatively instead of
+    // deliberately hitting the limit before slowing down. This never retries the failed call.
+    private val pacer = NhRequestPacer(if (environment == Environment.MOCK) 1_100L else 250L)
 
     /** WebSocket에서 사용할 토큰을 반환한다. 캐시 접근도 같은 gate로 보호한다. */
     suspend fun token(): String = withContext(Dispatchers.IO) { gate.withLock { tokenLocked() } }

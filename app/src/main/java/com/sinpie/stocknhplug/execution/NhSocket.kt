@@ -62,8 +62,13 @@ class NhSocket(
                                     if (id != generation) return
                                     acked += accepted.intersect(desired)
                                 }
-                                if (header.optString("rsp_cd") != "00000")
-                                    onEvent("시세 구독 미확인 · REST 조회 유지")
+                                if (header.optString("rsp_cd") != "00000") {
+                                    val code =
+                                        header.optString("rsp_cd").takeIf {
+                                            it.matches(Regex("(?:[0-9]{5}|WSS[0-9]{5})"))
+                                        } ?: "UNKNOWN"
+                                    onEvent("시세 구독 미확인 ($code) · REST 조회 유지")
+                                }
                                 return
                             }
                             if (header.optString("tr_cd") != "oc" || body == null) return

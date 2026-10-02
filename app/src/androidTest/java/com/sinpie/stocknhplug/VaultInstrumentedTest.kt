@@ -11,6 +11,20 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class VaultInstrumentedTest {
     @Test
+    fun mockProbeJournalCanBePersistedBeforeDispatch() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val vault = SecureVault(context)
+        val name = MockOrderProbeTest.JOURNAL_NAME
+        Assert.assertNull(vault.read(name))
+        try {
+            vault.write(name, JSONObject().put("phase", "SUBMITTING"))
+            Assert.assertEquals("SUBMITTING", SecureVault(context).read(name)!!.getString("phase"))
+        } finally {
+            vault.delete(name)
+        }
+    }
+
+    @Test
     fun roundTripCiphertextAndDeletion() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val vault = SecureVault(context)

@@ -92,3 +92,7 @@ corpCode 전체 목록에는 앱 실행 포트가 지원하지 않는 식별자�
 ## 2026-10-02 공식 주문체결 명세 재확인
 
 [NHPlug 공식 OpenAPI](https://www.nhplug.com/openapi-docs/krstock/openapi.json)의 dailyOrderExecution Output_0 배열을 반영했다. 이전 Output_1 배열도 명시적으로 구분한다. 체결 누적금액/수량으로 평균을 계산하며 임의 가격 배율을 적용하지 않는다. 새 수집처/크롤링/수정주가 권한은 추가하지 않았다. 시장주문번호와 통합주문번호의 대응은 여전히 미입증이다. 문서 해시와 진단 범위는 [모의 검증](MOCK_TEST_REQUEST33.md)에 기록한다.
+
+## 2026-10-02 요청 35 재확인
+
+[NH 공식 SDK 실시간 구현](https://github.com/PLUG-OpenAPI/nhplug-sdk/blob/main/nhplug/realtime.py)의 ACK/거절 코드 형식을 확인했다. 공식 common OpenAPI의 종합거래/입출금 명세도 다시 확인했으나 두 주문번호 대응 필드는 찾지 못했다. 파일 SHA-256: `f77ba5479f6bc9f4006316f98bc200cda6d5a0214c14201369be4f357c5366de`. 새 데이터 공급자나 이용권 승인 변경은 없다.

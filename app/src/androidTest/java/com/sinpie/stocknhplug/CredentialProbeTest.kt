@@ -164,7 +164,12 @@ class CredentialProbeTest {
                             // Availability inquiries do not require an executable quote. Keep
                             // freshness validation independent so a stale quote cannot mask APIs.
                             step("${prefix}_buy_available") {
-                                check(broker.available(account, "005930", Side.BUY, price) >= 0)
+                                val buyable = broker.available(account, "005930", Side.BUY, price)
+                                report(
+                                    "${prefix}_buyable_positive",
+                                    if (buyable > 0) "YES" else "NO",
+                                )
+                                check(buyable >= 0)
                             }
                             step("${prefix}_sell_available") {
                                 check(broker.available(account, "005930", Side.SELL, price) >= 0)
@@ -260,7 +265,13 @@ class CredentialProbeTest {
                         NhSocket(
                             nh,
                             { if (it.fresh(java.time.Instant.now())) received.add(it.symbol) },
-                            {},
+                            { event ->
+                                Regex("\\(([0-9]{5}|WSS[0-9]{5})\\)")
+                                    .find(event)
+                                    ?.groupValues
+                                    ?.get(1)
+                                    ?.let { report("quote_websocket_rejection", it) }
+                            },
                             {},
                         )
                     try {

@@ -5,6 +5,19 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class NhRequestPacerTest {
+    @Test
+    fun mockSpacingRemainsConservativeBeforeAndAfterCooldown() {
+        val pacer = NhRequestPacer(1100)
+        pacer.sent(ms(0))
+        assertEquals(1100L, pacer.delayMillis(ms(0)))
+        pacer.rateLimited(ms(100))
+        assertEquals(2000L, pacer.delayMillis(ms(100)))
+        pacer.sent(ms(2100))
+        assertEquals(1100L, pacer.delayMillis(ms(2100)))
+        pacer.sent(ms(40000))
+        assertEquals(1100L, pacer.delayMillis(ms(40000)))
+    }
+
     private fun ms(value: Long) = value * 1_000_000
 
     @Test

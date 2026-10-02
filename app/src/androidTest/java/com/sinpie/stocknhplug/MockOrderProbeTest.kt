@@ -30,6 +30,92 @@ import org.junit.Test
  * nonterminal/unknown result retains encrypted evidence and prevents automatic reruns.
  */
 class MockOrderProbeTest {
+    companion object {
+        internal const val JOURNAL_NAME = "mockorderprobe"
+
+        // Account-wide diagnostic only: the account had no orders earlier today. A broker
+        // cancellation can add a second row. This must never become a group ID mapping.
+        internal fun accountTerminal(rows: List<JSONObject>, symbol: String): Boolean =
+            runCatching {
+                    rows.size in 1..2 &&
+                        rows.all { row ->
+                            fun q(name: String) =
+                                row.get(name).toString().toBigDecimal().longValueExact()
+                            row.getString("iem_cd") == symbol &&
+                                q("orr_qty") == 1L &&
+                                q("tot_cns_qty") == 0L &&
+                                q("ny_cns_qty") == 0L &&
+                                q("can_qty") in 0L..1L
+                        } &&
+                        rows.sumOf {
+                            it.get("can_qty").toString().toBigDecimal().longValueExact()
+                        } == 1L
+                }
+                .getOrDefault(false)
+    }
+
+    /** Recovery never submits/cancels/retries; cleanup requires complete terminal evidence. */
+    @Test
+    fun inspectRetainedOrderReadOnly(): Unit = runBlocking {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        assumeTrue(InstrumentationRegistry.getArguments().getString("mockRecovery") == "1")
+        val context = instrumentation.targetContext
+        check(context.packageName == "com.sinpie.stocknhplug.debug")
+        val vault = SecureVault(context)
+        val journal = checkNotNull(vault.read(JOURNAL_NAME))
+        check(journal.getString("environment") == "MOCK")
+        check(journal.getString("phase") == "CANCEL_ACCEPTED")
+        val nh = NhTransport(vault, Environment.MOCK)
+        fun report(name: String, value: String) {
+            instrumentation.sendStatus(0, Bundle().apply { putString("probe", "$name=$value") })
+        }
+        try {
+            val pages =
+                nh.pages(
+                    "/krstock/inquiry/v1/dailyOrderExecution",
+                    JSONObject()
+                        .put("act_no", journal.getString("account"))
+                        .put("orr_dt", journal.getString("date").replace("-", ""))
+                        .put("orr_mkt_cd", "00")
+                        .put("ost_cns_dit", "0"),
+                    true,
+                )
+            val rows = pages.flatMap(com.sinpie.stocknhplug.execution.NhExecutionParser::rows)
+            report("recovery_rows", rows.size.toString())
+            rows.forEachIndexed { index, row ->
+                report(
+                    "row_${index}_symbol_matches",
+                    (row.optString("iem_cd") == journal.getString("symbol")).toString(),
+                )
+                for (field in listOf("orr_qty", "tot_cns_qty", "ny_cns_qty", "can_qty")) {
+                    val quantity = row.get(field).toString().toBigDecimal().longValueExact()
+                    report("row_${index}_$field", quantity.toString())
+                }
+            }
+            check(accountTerminal(rows, journal.getString("symbol")))
+            val account =
+                com.sinpie.stocknhplug.domain.Account(
+                    journal.getString("account"),
+                    Environment.MOCK,
+                    "nhplug",
+                )
+            NhBroker(nh).portfolio(account)
+            report("recovery_terminal_no_fill", "PASS")
+            report("recovery_fresh_balance", "PASS")
+            // The earlier diagnostic did not persist its holdings baseline. Do not claim a
+            // before/after comparison on recovery; all complete account order rows are terminal.
+            report("recovery_holdings_comparison", "NOT_PROVEN")
+            journal.put("phase", "VERIFIED_ACCOUNT_TERMINAL")
+            vault.write(JOURNAL_NAME, journal)
+            vault.deleteAll()
+            report("local_cleanup", "PASS")
+            report("recovery", "PASS")
+        } finally {
+            nh.client.connectionPool.evictAll()
+            nh.client.dispatcher.executorService.shutdown()
+        }
+    }
+
     @Test
     fun isolatedLimitAndCancel(): Unit = runBlocking {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -107,27 +193,39 @@ class MockOrderProbeTest {
             val now = java.time.ZonedDateTime.now(SEOUL)
             check(now.dayOfWeek.value in 1..5 && now.hour in 9..14)
             val broker = NhBroker(nh)
+            // Read-only sampling may wait for the next fresh exchange update. No order is
+            // retried, and the original freshness predicate is never relaxed.
+            suspend fun freshSnapshot(): com.sinpie.stocknhplug.domain.PriceSnapshot {
+                repeat(20) {
+                    try {
+                        return NhCurrentPriceProvider(nh).current("005930")
+                    } catch (e: IllegalArgumentException) {
+                        if (it == 19) throw e
+                        kotlinx.coroutines.delay(1_500)
+                    }
+                }
+                error("No fresh quote")
+            }
             val accounts = broker.accounts()
             check(accounts.isNotEmpty())
             kotlinx.coroutines.delay(1_500)
-            val snapshot = NhCurrentPriceProvider(nh).current("005930")
+            val snapshot = freshSnapshot()
             val price = snapshot.rules.lower
             check(snapshot.valid(java.time.Instant.now()))
             check(price in 1..1_000_000 && price < snapshot.quote.bid * 0.9)
             var account: com.sinpie.stocknhplug.domain.Account? = null
+            var baselineHoldings = emptyMap<String, Long>()
             for ((index, candidate) in accounts.withIndex()) {
                 kotlinx.coroutines.delay(1_500)
                 val holdings = broker.portfolio(candidate)
                 kotlinx.coroutines.delay(1_500)
-                if (
-                    holdings.holdings.isEmpty() &&
-                        broker.executions(candidate, LocalDate.now(SEOUL)).isEmpty()
-                ) {
+                if (broker.executions(candidate, LocalDate.now(SEOUL)).isEmpty()) {
                     kotlinx.coroutines.delay(1_500)
                     val available = broker.available(candidate, "005930", Side.BUY, price)
                     report("candidate_${index + 1}_buyable", if (available >= 1) "YES" else "NO")
                     if (available >= 1) {
                         account = candidate
+                        baselineHoldings = holdings.holdings.associate { it.symbol to it.quantity }
                         break
                     }
                 }
@@ -145,13 +243,14 @@ class MockOrderProbeTest {
                     .put("quantity", 1)
                     .put("price", price)
                     .put("date", LocalDate.now(SEOUL).toString())
+                    .put("baselineHoldings", JSONObject(baselineHoldings))
             fun record(phase: String) {
-                vault.write("mock_order_probe", journal.put("phase", phase))
+                vault.write(JOURNAL_NAME, journal.put("phase", phase))
             }
             record("PREPARED")
             kotlinx.coroutines.delay(1_500)
             // Refresh immediately before dispatch; never turn a stale quote into permission.
-            val fresh = NhCurrentPriceProvider(nh).current("005930")
+            val fresh = freshSnapshot()
             check(
                 fresh.valid(java.time.Instant.now()) &&
                     price == fresh.rules.lower &&
@@ -215,26 +314,20 @@ class MockOrderProbeTest {
                         )
                     val rows =
                         pages.flatMap(com.sinpie.stocknhplug.execution.NhExecutionParser::rows)
-                    val executions =
-                        pages.flatMap(com.sinpie.stocknhplug.execution.NhExecutionParser::parse)
+                    pages.flatMap(com.sinpie.stocknhplug.execution.NhExecutionParser::parse)
                     // Account-wide isolated evidence, NOT a guessed market/integrated ID mapping.
-                    terminal =
-                        rows.size == 1 &&
-                            executions.single().let {
-                                it.symbol == "005930" &&
-                                    it.ordered == 1L &&
-                                    it.filled == 0L &&
-                                    it.remaining == 0L
-                            } &&
-                            rows.single().getLong("can_qty") == 1L
+                    terminal = accountTerminal(rows, "005930")
                 }
             }
             check(terminal)
             kotlinx.coroutines.delay(1_500)
-            check(broker.portfolio(selected).holdings.isEmpty())
+            check(
+                broker.portfolio(selected).holdings.associate { it.symbol to it.quantity } ==
+                    baselineHoldings
+            )
             record("VERIFIED_ACCOUNT_TERMINAL")
             retain = false
-            report("cancelled_no_fill_no_holdings", "PASS")
+            report("cancelled_no_fill_holdings_unchanged", "PASS")
             report("order_id_mapping", "NOT_PROVEN")
             passed = true
         } catch (e: Exception) {
